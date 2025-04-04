@@ -2,7 +2,6 @@
 First of all I want u to **Add and edit**: > I want drop lists to be coded to be editable by mej.esam can add and delete values >add a calculators button  >Add a button in home screen named F&N documentation, its function when clicked is to request from the user to enter the path on the users computer of an applications exe file to run , and that bath is saved and can not be edited by any user except mej.esam >Add a button in the home screen viewed only to mej.esam to configure system settings, no any other user can access it , its function is to make edits to a lot of software functions like drop lists to add and delete and edit its input values , change the bath of app that gets runed by clicking F&N documentation button , delete all local patients records folders and files
 
 
-
 1.	Security & User Privileges System Current Issues:
 Privilege checks are inconsistent
 No proper audit logging
