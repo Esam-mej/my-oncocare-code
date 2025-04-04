@@ -1,4 +1,3 @@
-## Requested Changes
 
 First of all I want u to **Add and edit**: > I want drop lists to be coded to be editable by mej.esam can add and delete values >add a calculators button  >Add a button in home screen named F&N documentation, its function when clicked is to request from the user to enter the path on the users computer of an applications exe file to run , and that bath is saved and can not be edited by any user except mej.esam >Add a button in the home screen viewed only to mej.esam to configure system settings, no any other user can access it , its function is to make edits to a lot of software functions like drop lists to add and delete and edit its input values , change the bath of app that gets runed by clicking F&N documentation button , delete all local patients records folders and files
 
@@ -58,19 +57,20 @@ Log all privileged actions (user, timestamp, action)
 Store logs both locally and in Firebase
 Make logs viewable only by super admin
 2.	Clinical Workflow Enhancements A. Medication Management System
-IV fluid rate calculator
-4000ml per SA (-drug dilution if needed)
-3000ml per SA (-drug dilution if needed)
-2000ml per SA (-drug dilution if needed)
-400ml per SA (-drug dilution if needed)
-Full maintenance (+deficit if needed) (-drug dilution if needed) and half maintenance (-drug dilution if needed)
- 
+
 BSA Calculator:
 Multiple formula support (Mosteller/DuBois)
+IV fluid rate calculator (used after calculating body surface area)
+4000ml per BSA (-drug dilution if needed)
+3000ml per BSA (-drug dilution if needed)
+2000ml per BSA (-drug dilution if needed)
+400ml per BSA (-drug dilution if needed)
+Full maintenance (+deficit if needed) (-drug dilution if needed) and half maintenance (-drug dilution if needed)
+
 Auto-save to patient record
 Historical trend visualization
 Dosage Management:
-Protocol-based auto-calculation for all pediatric chemotherapies 
+Protocol-based auto-calculation for all pediatric chemotherapies with special consideration for patients weight under 10 kg
 Renal/hepatic dose adjustments
 Cumulative dose tracking
 Interactive dose rounding (nearest vial size)
