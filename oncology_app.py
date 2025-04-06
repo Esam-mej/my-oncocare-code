@@ -1,11 +1,10 @@
-import math
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog
+from tkinter import ttk, messagebox, filedialog
 import json
 import sys
 import os
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from tkcalendar import Calendar
 import bcrypt
 import matplotlib
@@ -14,8 +13,7 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 import webbrowser
 from docx import Document
-from docx.shared import Pt, Inches
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+from docx.shared import Pt
 import shutil
 import socket
 import threading
@@ -35,10 +33,6 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from googleapiclient.errors import HttpError
 import subprocess
-import hashlib
-from cryptography.fernet import Fernet
-import csv
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 def get_resource_path(relative_path):
     """Get absolute path to resource, works for dev and for PyInstaller"""
@@ -56,7 +50,6 @@ MALIGNANCIES = [
     "BRAIN T", "RHABDO", "RETINO", "HEPATO", "GERM CELL"
 ]
 
-# Default dropdown options that can be edited by admin
 DROPDOWN_OPTIONS = {
     "GENDER": ["MALE", "FEMALE"],
     "B_SYMPTOMS": ["FEVER", "NIGHT SWEAT", "WT LOSS", "NO B-SYMPTOMS"],
@@ -103,53 +96,6 @@ DROPDOWN_OPTIONS = {
         "PERIPHERAL NEUROPATHY", "PULMONARY FIBROSIS",
         "L-ASP. SENSITIVITY", "OTHERS"
     ]
-}
-
-# Lab tests and reference ranges (age-adjusted)
-LAB_TESTS = {
-    "WBC": {"unit": "x10³/μL", "pediatric_range": "5.0-17.0"},
-    "Hemoglobin": {"unit": "g/dL", "pediatric_range": "10.0-14.0"},
-    "Platelets": {"unit": "x10³/μL", "pediatric_range": "150-450"},
-    "Neutrophils": {"unit": "x10³/μL", "pediatric_range": "1.5-8.5"},
-    "Lymphocytes": {"unit": "x10³/μL", "pediatric_range": "1.0-4.8"},
-    "Urea": {"unit": "mg/dL", "pediatric_range": "5-18"},
-    "Creatinine": {"unit": "mg/dL", "pediatric_range": "0.2-0.7"},
-    "Sodium": {"unit": "mEq/L", "pediatric_range": "135-145"},
-    "Potassium": {"unit": "mEq/L", "pediatric_range": "3.5-5.0"},
-    "Chloride": {"unit": "mEq/L", "pediatric_range": "98-107"},
-    "Calcium": {"unit": "mg/dL", "pediatric_range": "8.8-10.8"},
-    "Magnesium": {"unit": "mg/dL", "pediatric_range": "1.7-2.3"},
-    "pH": {"unit": "", "pediatric_range": "7.35-7.45"},
-    "Uric Acid": {"unit": "mg/dL", "pediatric_range": "2.5-5.5"},
-    "LDH": {"unit": "U/L", "pediatric_range": "140-280"},
-    "Ferritin": {"unit": "ng/mL", "pediatric_range": "10-60"},
-    "PT": {"unit": "sec", "pediatric_range": "11-13.5"},
-    "APTT": {"unit": "sec", "pediatric_range": "25-35"},
-    "INR": {"unit": "", "pediatric_range": "0.9-1.1"},
-    "Fibrinogen": {"unit": "mg/dL", "pediatric_range": "200-400"},
-    "D-Dimer": {"unit": "μg/mL", "pediatric_range": "<0.5"},
-    "AST": {"unit": "U/L", "pediatric_range": "10-40"},
-    "ALT": {"unit": "U/L", "pediatric_range": "7-35"},
-    "ALP": {"unit": "U/L", "pediatric_range": "100-320"},
-    "Total Bilirubin": {"unit": "mg/dL", "pediatric_range": "0.2-1.2"},
-    "Direct Bilirubin": {"unit": "mg/dL", "pediatric_range": "0.0-0.3"},
-    "EF": {"unit": "%", "pediatric_range": ">55%"}
-}
-
-# Common medications with standard doses (mg/m²)
-MEDICATIONS = {
-    "Vincristine": {"standard_dose": 1.5, "max_dose": 2.0},
-    "Methotrexate": {"standard_dose": 5000, "max_dose": 12000},
-    "Doxorubicin": {"standard_dose": 30, "max_dose": 300},
-    "Cyclophosphamide": {"standard_dose": 1000, "max_dose": 4000},
-    "Prednisone": {"standard_dose": 40, "max_dose": 60},
-    "L-Asparaginase": {"standard_dose": 6000, "max_dose": 10000},
-    "Cytarabine": {"standard_dose": 100, "max_dose": 3000},
-    "Daunorubicin": {"standard_dose": 45, "max_dose": 300},
-    "Etoposide": {"standard_dose": 100, "max_dose": 300},
-    "Ifosfamide": {"standard_dose": 1800, "max_dose": 3600},
-    "Carboplatin": {"standard_dose": 400, "max_dose": 800},
-    "Cisplatin": {"standard_dose": 60, "max_dose": 100}
 }
 
 MALIGNANCY_FIELDS = {
@@ -235,20 +181,22 @@ MALIGNANCY_COLORS = {
 
 # Google Drive API Scopes
 SCOPES = ['https://www.googleapis.com/auth/drive']
+# Google Drive folder ID for the app (will be created if not exists)
 DRIVE_FOLDER_NAME = "OncoCare"
 DRIVE_PATIENTS_FOLDER_NAME = "OncoCare_Patients"
+
+# Chemo Stocks Google Sheet URL
 CHEMO_STOCKS_URL = "https://docs.google.com/spreadsheets/d/1QxcuCM4JLxPyePbaCvB1fdQOmEMgHwAL-bqRCaMvMfM/edit?usp=sharing"
 
-# Encryption key for sensitive data
-try:
-    with open('encryption_key.key', 'rb') as key_file:
-        ENCRYPTION_KEY = key_file.read()
-except:
-    ENCRYPTION_KEY = Fernet.generate_key()
-    with open('encryption_key.key', 'wb') as key_file:
-        key_file.write(ENCRYPTION_KEY)
-
-cipher_suite = Fernet(ENCRYPTION_KEY)
+# Supported file extensions for sync
+SUPPORTED_EXTENSIONS = {
+    'documents': ['.doc', '.docx', '.txt', '.pdf', '.rtf'],
+    'spreadsheets': ['.xls', '.xlsx', '.xlsm', '.csv'],
+    'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff'],
+    'data': ['.json', '.xml'],
+    'presentations': ['.ppt', '.pptx'],
+    'archives': ['.zip', '.rar']
+}
 
 class GoogleDriveManager:
     """Handles all Google Drive operations for OncoCare with improved file sync"""
@@ -264,9 +212,11 @@ class GoogleDriveManager:
         """Initialize Google Drive connection with error handling"""
         try:
             creds = None
+            # The file token.json stores the user's access and refresh tokens
             if os.path.exists('token.json'):
                 creds = Credentials.from_authorized_user_file('token.json', SCOPES)
             
+            # If there are no (valid) credentials available, let the user log in
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
                     creds.refresh(Request())
@@ -279,11 +229,14 @@ class GoogleDriveManager:
                         print("Google Drive credentials not found. File operations will be local only.")
                         return
                 
+                # Save the credentials for the next run
                 with open('token.json', 'w') as token:
                     token.write(creds.to_json())
             
             self.service = build('drive', 'v3', credentials=creds)
             self.initialized = True
+            
+            # Set up the app folder structure
             self.setup_app_folders()
             
         except Exception as e:
@@ -296,6 +249,7 @@ class GoogleDriveManager:
             return
             
         try:
+            # Check if main app folder exists
             query = f"name='{DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
             results = self.service.files().list(q=query, fields="files(id, name)").execute()
             items = results.get('files', [])
@@ -303,6 +257,7 @@ class GoogleDriveManager:
             if items:
                 self.app_folder_id = items[0]['id']
             else:
+                # Create main app folder
                 folder_metadata = {
                     'name': DRIVE_FOLDER_NAME,
                     'mimeType': 'application/vnd.google-apps.folder',
@@ -311,6 +266,7 @@ class GoogleDriveManager:
                 folder = self.service.files().create(body=folder_metadata, fields='id').execute()
                 self.app_folder_id = folder.get('id')
             
+            # Check if patients folder exists
             query = f"name='{DRIVE_PATIENTS_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and '{self.app_folder_id}' in parents and trashed=false"
             results = self.service.files().list(q=query, fields="files(id, name)").execute()
             items = results.get('files', [])
@@ -318,6 +274,7 @@ class GoogleDriveManager:
             if items:
                 self.patients_folder_id = items[0]['id']
             else:
+                # Create patients folder inside app folder
                 folder_metadata = {
                     'name': DRIVE_PATIENTS_FOLDER_NAME,
                     'mimeType': 'application/vnd.google-apps.folder',
@@ -337,6 +294,7 @@ class GoogleDriveManager:
             return False
         
         try:
+            # Check if file already exists
             query = f"name='{file_name}' and trashed=false"
             if folder_id:
                 query += f" and '{folder_id}' in parents"
@@ -353,9 +311,11 @@ class GoogleDriveManager:
             media = MediaFileUpload(file_path)
             
             if existing_files:
+                # Get the existing file's modification time
                 drive_mtime = datetime.strptime(existing_files[0].get('modifiedTime'), '%Y-%m-%dT%H:%M:%S.%fZ').timestamp()
                 local_mtime = os.path.getmtime(file_path)
                 
+                # Only update if local file is newer
                 if local_mtime > drive_mtime:
                     file_id = existing_files[0]['id']
                     file = self.service.files().update(
@@ -369,6 +329,7 @@ class GoogleDriveManager:
                     print(f"File {file_name} is up to date in Drive")
                     return True
             else:
+                # Create new file
                 file = self.service.files().create(
                     body=file_metadata,
                     media_body=media,
@@ -391,6 +352,8 @@ class GoogleDriveManager:
         
         try:
             request = self.service.files().get_media(fileId=file_id)
+            
+            # Ensure directory exists
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             
             fh = io.FileIO(save_path, 'wb')
@@ -416,6 +379,7 @@ class GoogleDriveManager:
         
         folder_name = f"Patient_{file_no}"
         try:
+            # Check if folder already exists
             query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and '{self.patients_folder_id}' in parents and trashed=false"
             results = self.service.files().list(q=query, fields="files(id)").execute()
             items = results.get('files', [])
@@ -423,6 +387,7 @@ class GoogleDriveManager:
             if items:
                 return items[0]['id']
             
+            # Create new folder
             folder_metadata = {
                 'name': folder_name,
                 'mimeType': 'application/vnd.google-apps.folder',
@@ -441,14 +406,18 @@ class GoogleDriveManager:
             return False
         
         try:
+            # Save patient data to a temporary file
             temp_file = "temp_patient_data.json"
             with open(temp_file, 'w') as f:
                 json.dump(patient_data, f)
             
+            # Upload to the app folder
             file_name = f"patient_{patient_data['FILE NUMBER']}.json"
             success = self.upload_file(temp_file, file_name, self.app_folder_id)
             
+            # Remove temporary file
             os.remove(temp_file)
+            
             return success
         except Exception as e:
             print(f"Error uploading patient data: {e}")
@@ -460,6 +429,7 @@ class GoogleDriveManager:
             return None
         
         try:
+            # List all patient data files
             query = f"'{self.app_folder_id}' in parents and name contains 'patient_' and name contains '.json' and trashed=false"
             results = self.service.files().list(q=query, fields="files(id, name)").execute()
             items = results.get('files', [])
@@ -467,6 +437,7 @@ class GoogleDriveManager:
             all_patients = []
             
             for item in items:
+                # Download each file
                 request = self.service.files().get_media(fileId=item['id'])
                 fh = io.BytesIO()
                 downloader = MediaIoBaseDownload(fh, request)
@@ -475,6 +446,7 @@ class GoogleDriveManager:
                 while done is False:
                     status, done = downloader.next_chunk()
                 
+                # Parse the JSON data
                 fh.seek(0)
                 patient_data = json.load(fh)
                 all_patients.append(patient_data)
@@ -485,7 +457,7 @@ class GoogleDriveManager:
             return None
     
     def sync_patient_files(self, file_no):
-        """Sync all files for a specific patient between local and Google Drive"""
+        """Sync all files for a specific patient between local and Google Drive with two-way sync"""
         if not self.initialized:
             return False, "Google Drive not initialized"
         
@@ -493,11 +465,13 @@ class GoogleDriveManager:
         if not os.path.exists(local_folder):
             os.makedirs(local_folder, exist_ok=True)
         
+        # Get or create the patient folder in Drive
         drive_folder_id = self.create_patient_folder(file_no)
         if not drive_folder_id:
             return False, "Failed to create/get patient folder in Drive"
         
         try:
+            # List files in local folder
             local_files = {}
             for root, _, files in os.walk(local_folder):
                 for file in files:
@@ -509,6 +483,7 @@ class GoogleDriveManager:
                         'size': os.path.getsize(file_path)
                     }
             
+            # List files in Drive folder
             query = f"'{drive_folder_id}' in parents and trashed=false"
             results = self.service.files().list(
                 q=query, 
@@ -524,33 +499,43 @@ class GoogleDriveManager:
                 for item in results.get('files', [])
             }
             
+            # Process files for two-way sync
             upload_count = 0
             download_count = 0
             
+            # Upload new or modified files to Drive
             for rel_path, local_info in local_files.items():
                 file_name = os.path.basename(rel_path)
                 
+                # Skip unsupported file types
                 if not self.is_supported_file(file_name):
                     continue
                 
                 if file_name not in drive_files:
+                    # New file - upload to Drive
                     if self.upload_file(local_info['path'], file_name, drive_folder_id):
                         upload_count += 1
                 else:
+                    # File exists in both - compare modification times
                     drive_info = drive_files[file_name]
                     if local_info['mtime'] > drive_info['mtime']:
+                        # Local file is newer - upload to Drive
                         if self.upload_file(local_info['path'], file_name, drive_folder_id):
                             upload_count += 1
             
+            # Download files from Drive that don't exist locally or are newer
             for file_name, drive_info in drive_files.items():
                 local_path = os.path.join(local_folder, file_name)
                 
                 if not os.path.exists(local_path):
+                    # File doesn't exist locally - download
                     if self.download_file(drive_info['id'], local_path):
                         download_count += 1
                 else:
+                    # File exists - compare modification times
                     local_mtime = os.path.getmtime(local_path)
                     if drive_info['mtime'] > local_mtime:
+                        # Drive file is newer - download
                         if self.download_file(drive_info['id'], local_path):
                             download_count += 1
             
@@ -562,12 +547,10 @@ class GoogleDriveManager:
     def is_supported_file(self, filename):
         """Check if file extension is supported for sync"""
         ext = os.path.splitext(filename)[1].lower()
-        supported_extensions = [
-            '.doc', '.docx', '.txt', '.pdf', '.rtf', '.xls', '.xlsx', '.xlsm', '.csv',
-            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.json', '.xml',
-            '.ppt', '.pptx', '.zip', '.rar'
-        ]
-        return ext in supported_extensions
+        for category, extensions in SUPPORTED_EXTENSIONS.items():
+            if ext in extensions:
+                return True
+        return False
     
     def get_drive_file_mtime(self, file_id):
         """Get the modification time of a file in Google Drive by file ID"""
@@ -593,6 +576,7 @@ class FirebaseManager:
         """Initialize Firebase connection with error handling"""
         try:
             if not firebase_admin._apps:
+                # Use a service account (you'll need to provide your own credentials file)
                 cred_path = 'serviceAccountKey.json'
                 if os.path.exists(cred_path):
                     cred = credentials.Certificate(cred_path)
@@ -611,19 +595,23 @@ class FirebaseManager:
             return False, "Firebase not initialized"
         
         try:
+            # Get the latest data from Firebase
             firebase_data = []
             docs = self.db.collection('patients').stream()
             for doc in docs:
                 patient = doc.to_dict()
-                patient['_firestore_id'] = doc.id
+                patient['_firestore_id'] = doc.id  # Store document ID for updates
                 firebase_data.append(patient)
             
+            # Merge strategies with improved conflict resolution
             merged_data = self.merge_data(local_data, firebase_data)
             
+            # Update Firebase with merged data
             batch = self.db.batch()
             patients_ref = self.db.collection('patients')
             
             for patient in merged_data:
+                # Use existing document ID if available (for updates)
                 doc_id = patient.pop('_firestore_id', None) or patient['FILE NUMBER']
                 doc_ref = patients_ref.document(doc_id)
                 batch.set(doc_ref, patient)
@@ -650,20 +638,26 @@ class FirebaseManager:
             firebase_patient = firebase_by_id.get(file_no)
             
             if local_patient and not firebase_patient:
+                # Only exists locally - add to merged
                 merged.append(local_patient)
             elif firebase_patient and not local_patient:
+                # Only exists in Firebase - add to merged
                 merged.append(firebase_patient)
             else:
+                # Exists in both - use the most recently modified version
                 try:
                     local_date = datetime.strptime(local_patient['LAST_MODIFIED_DATE'], '%d/%m/%Y %H:%M:%S')
                     firebase_date = datetime.strptime(firebase_patient['LAST_MODIFIED_DATE'], '%d/%m/%Y %H:%M:%S')
                     
                     if local_date > firebase_date:
+                        # Local is newer - keep local and preserve Firebase ID
                         local_patient['_firestore_id'] = firebase_patient.get('_firestore_id', file_no)
                         merged.append(local_patient)
                     else:
+                        # Firebase is newer or same - keep Firebase version
                         merged.append(firebase_patient)
                 except:
+                    # If date parsing fails, keep both with local version marked
                     local_patient['_conflict'] = True
                     merged.append(local_patient)
                     merged.append(firebase_patient)
@@ -680,7 +674,7 @@ class FirebaseManager:
             docs = self.db.collection('patients').stream()
             for doc in docs:
                 patient = doc.to_dict()
-                patient['_firestore_id'] = doc.id
+                patient['_firestore_id'] = doc.id  # Store document ID for reference
                 patients.append(patient)
             return patients
         except Exception as e:
@@ -696,13 +690,16 @@ class OncologyApp:
         self.root.geometry("1200x800")
         self.root.state('zoomed')
         
+        # Set window icon
         try:
-            self.root.iconbitmap('icon.ico')
+            self.root.iconbitmap('icon.ico')  # Replace with your icon file
         except:
             pass
         
-        # Initialize managers
+        # Initialize Firebase manager
         self.firebase = FirebaseManager()
+        
+        # Initialize Google Drive manager
         self.drive = GoogleDriveManager()
         
         # Initialize variables
@@ -712,8 +709,6 @@ class OncologyApp:
         self.last_sync_time = None
         self.internet_connected = False
         self.sync_in_progress = False
-        self.fn_doc_path = None  # Path for F&N documentation executable
-        self.load_settings()
         
         # Configure styles
         self.setup_styles()
@@ -734,25 +729,27 @@ class OncologyApp:
         self.setup_login_screen()
         
         # Initialize thread pool for background tasks
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        self.executor = ThreadPoolExecutor(max_workers=4)  # Increased workers for better sync
         
         # Handle window close properly
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
     
+    # ... [Previous methods remain the same until the sync_data method] ...
+    #     
     def setup_styles(self):
         """Configure the visual styles for the application"""
         self.style = ttk.Style()
         self.style.theme_use('clam')
         
         # Configure colors
-        self.primary_color = '#2c3e50'
-        self.secondary_color = '#3498db'
-        self.accent_color = '#e74c3c'
-        self.light_color = '#ecf0f1'
-        self.dark_color = '#2c3e50'
-        self.success_color = '#27ae60'
-        self.warning_color = '#f39c12'
-        self.danger_color = '#e74c3c'
+        self.primary_color = '#2c3e50'  # Dark blue
+        self.secondary_color = '#3498db'  # Blue
+        self.accent_color = '#e74c3c'  # Red
+        self.light_color = '#ecf0f1'  # Light gray
+        self.dark_color = '#2c3e50'  # Dark blue
+        self.success_color = '#27ae60'  # Green
+        self.warning_color = '#f39c12'  # Orange
+        self.danger_color = '#e74c3c'  # Red
         
         # Configure styles
         self.style.configure('TFrame', background=self.light_color)
@@ -832,31 +829,6 @@ class OncologyApp:
         # Update datetime
         self.update_datetime()
     
-    def load_settings(self):
-        """Load application settings from encrypted file"""
-        try:
-            if os.path.exists('settings.enc'):
-                with open('settings.enc', 'rb') as f:
-                    encrypted_data = f.read()
-                    decrypted_data = cipher_suite.decrypt(encrypted_data)
-                    settings = json.loads(decrypted_data.decode())
-                    self.fn_doc_path = settings.get('fn_doc_path')
-        except Exception as e:
-            print(f"Error loading settings: {e}")
-    
-    def save_settings(self):
-        """Save application settings to encrypted file"""
-        try:
-            settings = {
-                'fn_doc_path': self.fn_doc_path,
-                'dropdown_options': DROPDOWN_OPTIONS
-            }
-            encrypted_data = cipher_suite.encrypt(json.dumps(settings).encode())
-            with open('settings.enc', 'wb') as f:
-                f.write(encrypted_data)
-        except Exception as e:
-            print(f"Error saving settings: {e}")
-    
     def load_patient_data(self):
         """Load patient data from file or create empty list"""
         if not os.path.exists('patients_data.json'):
@@ -885,6 +857,7 @@ class OncologyApp:
         if hasattr(self, 'datetime_label') and self.datetime_label.winfo_exists():
             now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             self.datetime_label.config(text=now)
+            # Use after_idle to prevent "invalid command name" errors
             self.root.after(1000, self.update_datetime)
     
     def check_internet_connection(self):
@@ -897,7 +870,8 @@ class OncologyApp:
                 self.internet_connected = False
             
             self.update_internet_indicator()
-            self.root.after(30000, internet_check)
+            # Use after_idle to prevent "invalid command name" errors
+            self.root.after(30000, internet_check)  # Check every 30 seconds
         
         internet_check()
     
@@ -908,6 +882,7 @@ class OncologyApp:
                 with open("users_data.json", "r") as f:
                     self.users = json.load(f)
             except json.JSONDecodeError:
+                # Handle empty or corrupted file
                 self.users = self.create_default_users()
                 self.save_users_to_file()
         else:
@@ -947,6 +922,7 @@ class OncologyApp:
     def on_close(self):
         """Handle window close event"""
         if messagebox.askyesno("Exit Confirmation", "Are you sure you want to exit?"):
+            # Cancel all pending after events
             for after_id in self.root.tk.eval('after info').split():
                 self.root.after_cancel(after_id)
             
@@ -1084,6 +1060,7 @@ class OncologyApp:
             ttk.Button(row1_frame, text="Add New Patient", command=self.add_patient,
                       style='Blue.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
         else:
+            # Empty space to maintain layout
             ttk.Frame(row1_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
         
         ttk.Button(row1_frame, text="Search Patient", command=self.search_patient,
@@ -1093,6 +1070,7 @@ class OncologyApp:
             ttk.Button(row1_frame, text="View All Patients", command=self.view_all_patients,
                       style='Blue.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
         else:
+            # Empty space to maintain layout
             ttk.Frame(row1_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
 
         # Second row - Data Operations (Green buttons)
@@ -1110,6 +1088,7 @@ class OncologyApp:
                 ttk.Button(row2_frame, text="Restore Data", command=self.restore_data,
                           style='Green.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
             else:
+                # Empty space to maintain layout
                 ttk.Frame(row2_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
 
         # Third row - Clinical Tools (Yellow buttons)
@@ -1126,12 +1105,14 @@ class OncologyApp:
             ttk.Button(row3_frame, text="CHEMO STOCKS", command=self.show_chemo_stocks,
                       style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
         else:
+            # Empty space to maintain layout
             ttk.Frame(row3_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
         
         if self.users[self.current_user]["role"] in ["admin", "editor"]:
             ttk.Button(row3_frame, text="Statistics", command=self.show_statistics,
                       style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
         else:
+            # Empty space to maintain layout
             ttk.Frame(row3_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
 
         # Fourth row - User Management (Brown buttons)
@@ -1145,26 +1126,14 @@ class OncologyApp:
             ttk.Button(row4_frame, text="Change Password", command=self.change_password,
                       style='Brown.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
         else:
+            # Empty space to maintain layout
             ttk.Frame(row4_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
 
-        # Fifth row - Special Features (Purple buttons)
+        # Fifth row - Logout (Red button)
         row5_frame = ttk.Frame(btn_frame, style='TFrame')
-        row5_frame.pack(fill=tk.X, pady=5)
+        row5_frame.pack(fill=tk.X, pady=(20, 5))
         
-        ttk.Button(row5_frame, text="F&N Documentation", command=self.run_fn_documentation,
-                  style='Purple.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        
-        if self.current_user == "mej.esam":
-            ttk.Button(row5_frame, text="Settings", command=self.open_settings,
-                      style='Purple.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            ttk.Frame(row5_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-        # Sixth row - Logout (Red button)
-        row6_frame = ttk.Frame(btn_frame, style='TFrame')
-        row6_frame.pack(fill=tk.X, pady=(20, 5))
-        
-        ttk.Button(row6_frame, text="Logout", command=self.setup_login_screen,
+        ttk.Button(row5_frame, text="Logout", command=self.setup_login_screen,
                   style='Red.TButton').pack(fill=tk.X, ipady=10)
 
         # Signature
@@ -1174,194 +1143,6 @@ class OncologyApp:
         ttk.Label(signature_frame, text="Made by: DR. ESAM MEJRAB",
                  font=('Times New Roman', 14, 'italic'), 
                  foreground=self.primary_color).pack()
-    
-    def run_fn_documentation(self):
-        """Run the F&N documentation application if path is set"""
-        if not self.fn_doc_path:
-            if self.current_user == "mej.esam":
-                self.set_fn_documentation_path()
-            else:
-                messagebox.showerror("Error", "F&N Documentation path not set. Please contact admin.")
-            return
-        
-        try:
-            subprocess.Popen(self.fn_doc_path)
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not run F&N Documentation: {e}")
-    
-    def set_fn_documentation_path(self):
-        """Set the path for F&N documentation executable"""
-        path = filedialog.askopenfilename(title="Select F&N Documentation Executable", 
-                                        filetypes=[("Executable files", "*.exe")])
-        if path:
-            self.fn_doc_path = path
-            self.save_settings()
-            messagebox.showinfo("Success", "F&N Documentation path set successfully!")
-    
-    def open_settings(self):
-        """Open settings window (only for mej.esam)"""
-        if self.current_user != "mej.esam":
-            messagebox.showerror("Access Denied", "Only mej.esam can access settings.")
-            return
-        
-        settings_window = tk.Toplevel(self.root)
-        settings_window.title("Application Settings")
-        settings_window.geometry("600x400")
-        
-        # Main container
-        main_frame = ttk.Frame(settings_window, style='TFrame')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Tab control
-        tab_control = ttk.Notebook(main_frame)
-        tab_control.pack(fill=tk.BOTH, expand=True)
-        
-        # Dropdown Options Tab
-        dropdown_tab = ttk.Frame(tab_control)
-        tab_control.add(dropdown_tab, text="Dropdown Options")
-        
-        # List of dropdown categories
-        dropdown_categories = list(DROPDOWN_OPTIONS.keys())
-        self.dropdown_category_var = tk.StringVar(value=dropdown_categories[0])
-        
-        # Category selection
-        category_frame = ttk.Frame(dropdown_tab, style='TFrame')
-        category_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        ttk.Label(category_frame, text="Category:").pack(side=tk.LEFT, padx=5)
-        category_combo = ttk.Combobox(category_frame, textvariable=self.dropdown_category_var,
-                                     values=dropdown_categories, state="readonly")
-        category_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        category_combo.bind("<<ComboboxSelected>>", self.update_dropdown_options_view)
-        
-        # Options listbox with scrollbar
-        listbox_frame = ttk.Frame(dropdown_tab, style='TFrame')
-        listbox_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        self.options_listbox = tk.Listbox(listbox_frame, selectmode=tk.SINGLE, height=10)
-        self.options_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=self.options_listbox.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.options_listbox.config(yscrollcommand=scrollbar.set)
-        
-        # Add/Remove options
-        option_edit_frame = ttk.Frame(dropdown_tab, style='TFrame')
-        option_edit_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        self.new_option_entry = ttk.Entry(option_edit_frame)
-        self.new_option_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        ttk.Button(option_edit_frame, text="Add", command=self.add_dropdown_option,
-                  style='Green.TButton').pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(option_edit_frame, text="Remove", command=self.remove_dropdown_option,
-                  style='Red.TButton').pack(side=tk.LEFT, padx=5)
-        
-        # System Settings Tab
-        system_tab = ttk.Frame(tab_control)
-        tab_control.add(system_tab, text="System Settings")
-        
-        # F&N Documentation Path
-        fn_frame = ttk.Frame(system_tab, style='TFrame')
-        fn_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        ttk.Label(fn_frame, text="F&N Documentation Path:").pack(side=tk.LEFT)
-        self.fn_path_var = tk.StringVar(value=self.fn_doc_path or "Not set")
-        ttk.Entry(fn_frame, textvariable=self.fn_path_var, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        ttk.Button(fn_frame, text="Change", command=self.set_fn_documentation_path,
-                  style='Blue.TButton').pack(side=tk.LEFT, padx=5)
-        
-        # Data Management Tab
-        data_tab = ttk.Frame(tab_control)
-        tab_control.add(data_tab, text="Data Management")
-        
-        # Delete all local patient folders
-        ttk.Button(data_tab, text="Delete All Local Patient Folders", 
-                  command=self.delete_all_patient_folders,
-                  style='Red.TButton').pack(fill=tk.X, padx=5, pady=5)
-        
-        # Button frame
-        button_frame = ttk.Frame(main_frame, style='TFrame')
-        button_frame.pack(fill=tk.X, pady=10)
-        
-        ttk.Button(button_frame, text="Save Settings", command=self.save_settings_from_ui,
-                  style='Blue.TButton').pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(button_frame, text="Close", command=settings_window.destroy).pack(side=tk.RIGHT, padx=5)
-        
-        # Initialize the options view
-        self.update_dropdown_options_view()
-    
-    def update_dropdown_options_view(self, event=None):
-        """Update the listbox with options for the selected category"""
-        category = self.dropdown_category_var.get()
-        self.options_listbox.delete(0, tk.END)
-        
-        for option in DROPDOWN_OPTIONS.get(category, []):
-            self.options_listbox.insert(tk.END, option)
-    
-    def add_dropdown_option(self):
-        """Add a new option to the selected dropdown category"""
-        category = self.dropdown_category_var.get()
-        new_option = self.new_option_entry.get().strip()
-        
-        if not new_option:
-            messagebox.showerror("Error", "Please enter an option to add")
-            return
-        
-        if new_option in DROPDOWN_OPTIONS[category]:
-            messagebox.showerror("Error", "This option already exists")
-            return
-        
-        DROPDOWN_OPTIONS[category].append(new_option)
-        self.update_dropdown_options_view()
-        self.new_option_entry.delete(0, tk.END)
-        messagebox.showinfo("Success", "Option added successfully")
-    
-    def remove_dropdown_option(self):
-        """Remove the selected option from the dropdown category"""
-        category = self.dropdown_category_var.get()
-        selection = self.options_listbox.curselection()
-        
-        if not selection:
-            messagebox.showerror("Error", "Please select an option to remove")
-            return
-        
-        option_to_remove = self.options_listbox.get(selection[0])
-        DROPDOWN_OPTIONS[category].remove(option_to_remove)
-        self.update_dropdown_options_view()
-        messagebox.showinfo("Success", "Option removed successfully")
-    
-    def save_settings_from_ui(self):
-        """Save settings from the UI"""
-        self.save_settings()
-        messagebox.showinfo("Success", "Settings saved successfully!")
-    
-    def delete_all_patient_folders(self):
-        """Delete all local patient folders (admin only)"""
-        if self.current_user != "mej.esam":
-            messagebox.showerror("Access Denied", "Only mej.esam can perform this action.")
-            return
-        
-        confirm = messagebox.askyesno("Confirm Delete", 
-                                    "This will delete ALL local patient folders and their contents.\n"
-                                    "This action cannot be undone!\n\n"
-                                    "Are you sure you want to continue?")
-        if not confirm:
-            return
-        
-        try:
-            deleted_count = 0
-            for folder in os.listdir('.'):
-                if folder.startswith('Patient_'):
-                    shutil.rmtree(folder)
-                    deleted_count += 1
-            
-            messagebox.showinfo("Success", f"Deleted {deleted_count} patient folders")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to delete folders: {e}")
     
     def show_chemo_protocols(self):
         """Open the Protocols folder"""
@@ -1414,6 +1195,7 @@ class OncologyApp:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
+        # Enable mouse wheel scrolling
         def _on_mouse_wheel(event):
             canvas.yview_scroll(-1 * (event.delta // 120), "units")
         
@@ -1666,6 +1448,7 @@ class OncologyApp:
     
     def save_patient(self):
         """Save patient data to file and sync with Google Drive"""
+        # Check if malignancy is selected
         malignancy = self.malignancy_var.get()
         if not malignancy:
             messagebox.showerror("Error", "Please select a malignancy type")
@@ -1683,6 +1466,7 @@ class OncologyApp:
             if not value:
                 missing_fields.append(field)
         
+        # Check at least one from examination, history, symptoms
         exam_selected = False
         if "EXAMINATION" in self.entries:
             exam_selected = len(self.entries["EXAMINATION"].curselection()) > 0 or \
@@ -1746,6 +1530,7 @@ class OncologyApp:
 
         # Save the patient data
         self.patient_data.append(patient_data)
+        # Sort patient data by file number (numeric)
         self.patient_data.sort(key=lambda x: int(x.get("FILE NUMBER", 0)))
         self.save_patient_data()
 
@@ -1765,9 +1550,13 @@ class OncologyApp:
             return False
         
         try:
+            # Upload patient data
             file_no = patient_data["FILE NUMBER"]
             self.drive.upload_patient_data(patient_data)
+            
+            # Sync patient folder
             self.drive.sync_patient_files(file_no)
+            
             return True
         except Exception as e:
             print(f"Error uploading patient to Google Drive: {e}")
@@ -1789,6 +1578,7 @@ class OncologyApp:
         folder_name = f"Patient_{file_no}"
         self.create_patient_folder(file_no)
         
+        # Try to sync with Google Drive
         if self.drive.initialized:
             self.executor.submit(self.drive.sync_patient_files, file_no)
         
@@ -1818,6 +1608,7 @@ class OncologyApp:
             doc.add_heading('Basic Information', level=1)
             
             if not create_only:
+                # If creating from current form data
                 for field in COMMON_FIELDS:
                     if field in self.entries:
                         value = ""
@@ -1830,6 +1621,7 @@ class OncologyApp:
                         
                         doc.add_paragraph(f"{field}: {value}", style='List Bullet')
             else:
+                # If creating from existing data
                 patient = next((p for p in self.patient_data if p.get("FILE NUMBER") == file_no), None)
                 if patient:
                     for field in COMMON_FIELDS:
@@ -1840,6 +1632,7 @@ class OncologyApp:
             doc.save(doc_path)
         
         if not create_only:
+            # Upload to Google Drive in background
             if self.drive.initialized:
                 self.executor.submit(self.drive.upload_file, doc_path, doc_name, self.drive.create_patient_folder(file_no))
             
@@ -1910,6 +1703,7 @@ class OncologyApp:
             messagebox.showerror("Error", "No patient data available")
             return
 
+        # Filter results based on search criteria
         matching_data = []
         for patient in self.patient_data:
             match = True
@@ -1926,6 +1720,7 @@ class OncologyApp:
             messagebox.showerror("Not Found", "No patient found with the given criteria")
             return
 
+        # Handle multiple results
         self.current_results = matching_data
         self.current_result_index = 0
         self.view_patient(self.current_results[self.current_result_index], 
@@ -2054,6 +1849,7 @@ class OncologyApp:
         if not os.path.exists(folder_name):
             self.create_patient_folder(file_no)
         
+        # Try to sync with Google Drive
         if self.drive.initialized:
             self.executor.submit(self.drive.sync_patient_files, file_no)
         
@@ -2283,7 +2079,7 @@ class OncologyApp:
                     self.edit_entries[field] = entry
                 
                 row += 1
-
+        
         # Button frame
         btn_frame = ttk.Frame(right_frame, padding="10 10 10 10", style='TFrame')
         btn_frame.pack(fill=tk.X)
@@ -2292,1222 +2088,238 @@ class OncologyApp:
                   command=lambda: self.save_edited_patient(patient_data),
                   style='Blue.TButton').pack(side=tk.LEFT, padx=10)
         
-        # Add Medication Management button
-        ttk.Button(btn_frame, text="Medication Management", 
-                  command=lambda: self.open_medication_management(patient_data["FILE NUMBER"]),
-                  style='Green.TButton').pack(side=tk.LEFT, padx=10)
-        
         ttk.Button(btn_frame, text="Cancel", 
                   command=lambda: self.view_patient(patient_data)).pack(side=tk.LEFT, padx=10)
         
         ttk.Button(btn_frame, text="Main Menu", command=self.main_menu,
                   style='Blue.TButton').pack(side=tk.RIGHT, padx=10)
-
-    def open_medication_management(self, file_no):
-        """Open medication management window for a patient"""
-        self.medication_window = tk.Toplevel(self.root)
-        self.medication_window.title(f"Medication Management - Patient {file_no}")
-        self.medication_window.geometry("1000x700")
-        
-        # Get patient data
-        patient = next((p for p in self.patient_data if p.get("FILE NUMBER") == file_no), None)
-        if not patient:
-            messagebox.showerror("Error", "Patient not found")
-            self.medication_window.destroy()
-            return
-        
-        # Main container
-        main_frame = ttk.Frame(self.medication_window, style='TFrame')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Notebook for tabs
-        notebook = ttk.Notebook(main_frame)
-        notebook.pack(fill=tk.BOTH, expand=True)
-        
-        # Current Medications tab
-        current_meds_frame = ttk.Frame(notebook, style='TFrame')
-        notebook.add(current_meds_frame, text="Current Medications")
-        self.setup_current_medications_tab(current_meds_frame, patient)
-        
-        # Medication History tab
-        history_frame = ttk.Frame(notebook, style='TFrame')
-        notebook.add(history_frame, text="Medication History")
-        self.setup_medication_history_tab(history_frame, patient)
-        
-        # BSA Calculator tab
-        bsa_frame = ttk.Frame(notebook, style='TFrame')
-        notebook.add(bsa_frame, text="BSA Calculator")
-        self.setup_bsa_calculator_tab(bsa_frame, patient)
-        
-        # Lab Results tab
-        lab_frame = ttk.Frame(notebook, style='TFrame')
-        notebook.add(lab_frame, text="Lab Results")
-        self.setup_lab_results_tab(lab_frame, patient)
-        
-        # Close button
-        btn_frame = ttk.Frame(main_frame, style='TFrame')
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        ttk.Button(btn_frame, text="Close", command=self.medication_window.destroy,
-                  style='Blue.TButton').pack()
-
-    def setup_current_medications_tab(self, parent, patient):
-        """Setup the current medications tab"""
-        # Load medication data or initialize if not exists
-        if "MEDICATIONS" not in patient:
-            patient["MEDICATIONS"] = {"current": [], "history": []}
-            self.save_patient_data()
-        
-        # Create scrollable frame
-        container = ttk.Frame(parent, style='TFrame')
-        container.pack(fill=tk.BOTH, expand=True)
-        
-        canvas = tk.Canvas(container, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas, style='TFrame')
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Header
-        ttk.Label(scrollable_frame, text="Current Medications", 
-                 font=('Helvetica', 14, 'bold')).pack(pady=10)
-        
-        # Add new medication button
-        ttk.Button(scrollable_frame, text="Add New Medication", 
-                  command=lambda: self.add_new_medication(patient),
-                  style='Green.TButton').pack(pady=10)
-        
-        # Display current medications
-        if not patient["MEDICATIONS"]["current"]:
-            ttk.Label(scrollable_frame, text="No current medications", 
-                     style='TLabel').pack(pady=20)
-        else:
-            for med in patient["MEDICATIONS"]["current"]:
-                self.create_medication_card(scrollable_frame, med, patient)
     
-    def create_medication_card(self, parent, medication, patient):
-        """Create a medication card display"""
-        card_frame = ttk.Frame(parent, style='Card.TFrame', padding=10)
-        card_frame.pack(fill=tk.X, pady=5, padx=5)
-        
-        # Medication name and details
-        ttk.Label(card_frame, text=medication["name"], 
-                 font=('Helvetica', 12, 'bold')).pack(anchor="w")
-        
-        details_frame = ttk.Frame(card_frame, style='TFrame')
-        details_frame.pack(fill=tk.X, pady=5)
-        
-        # Left side - details
-        left_frame = ttk.Frame(details_frame, style='TFrame')
-        left_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        ttk.Label(left_frame, text=f"Dose: {medication['dose']} {medication['unit']}").pack(anchor="w")
-        ttk.Label(left_frame, text=f"Frequency: {medication['frequency']}").pack(anchor="w")
-        ttk.Label(left_frame, text=f"Route: {medication['route']}").pack(anchor="w")
-        
-        # Right side - dates and actions
-        right_frame = ttk.Frame(details_frame, style='TFrame')
-        right_frame.pack(side=tk.RIGHT, fill=tk.X)
-        
-        ttk.Label(right_frame, text=f"Start: {medication['start_date']}").pack(anchor="e")
-        if 'end_date' in medication:
-            ttk.Label(right_frame, text=f"End: {medication['end_date']}").pack(anchor="e")
-        
-        # Action buttons
-        btn_frame = ttk.Frame(card_frame, style='TFrame')
-        btn_frame.pack(fill=tk.X, pady=(5, 0))
-        
-        ttk.Button(btn_frame, text="Discontinue", 
-                  command=lambda m=medication: self.discontinue_medication(m, patient),
-                  style='Red.TButton').pack(side=tk.LEFT, padx=2)
-        
-        ttk.Button(btn_frame, text="Edit", 
-                  command=lambda m=medication: self.edit_medication(m, patient),
-                  style='Blue.TButton').pack(side=tk.LEFT, padx=2)
-        
-        ttk.Button(btn_frame, text="Administer", 
-                  command=lambda m=medication: self.record_administration(m, patient),
-                  style='Green.TButton').pack(side=tk.LEFT, padx=2)
-    
-    def add_new_medication(self, patient):
-        """Open dialog to add new medication"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Add New Medication")
-        dialog.geometry("600x500")
-        
-        # Form frame
-        form_frame = ttk.Frame(dialog, style='TFrame', padding=20)
-        form_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Medication name
-        ttk.Label(form_frame, text="Medication Name:").grid(row=0, column=0, sticky="w", pady=5)
-        name_entry = ttk.Entry(form_frame)
-        name_entry.grid(row=0, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Dose
-        ttk.Label(form_frame, text="Dose:").grid(row=1, column=0, sticky="w", pady=5)
-        dose_frame = ttk.Frame(form_frame)
-        dose_frame.grid(row=1, column=1, sticky="ew", pady=5, padx=5)
-        
-        dose_entry = ttk.Entry(dose_frame)
-        dose_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        unit_var = tk.StringVar(value="mg")
-        unit_combo = ttk.Combobox(dose_frame, textvariable=unit_var, 
-                                values=["mg", "mcg", "g", "mg/m²", "mcg/m²", "IU", "mL"])
-        unit_combo.pack(side=tk.LEFT, padx=5)
-        
-        # Frequency
-        ttk.Label(form_frame, text="Frequency:").grid(row=2, column=0, sticky="w", pady=5)
-        freq_var = tk.StringVar(value="Daily")
-        freq_combo = ttk.Combobox(form_frame, textvariable=freq_var,
-                                values=["Daily", "BID", "TID", "QID", "QHS", "QOD", 
-                                       "Weekly", "Monthly", "Other"])
-        freq_combo.grid(row=2, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Route
-        ttk.Label(form_frame, text="Route:").grid(row=3, column=0, sticky="w", pady=5)
-        route_var = tk.StringVar(value="PO")
-        route_combo = ttk.Combobox(form_frame, textvariable=route_var,
-                                 values=["PO", "IV", "IM", "SC", "Topical", "PR", "Other"])
-        route_combo.grid(row=3, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Start date
-        ttk.Label(form_frame, text="Start Date:").grid(row=4, column=0, sticky="w", pady=5)
-        start_frame = ttk.Frame(form_frame)
-        start_frame.grid(row=4, column=1, sticky="ew", pady=5, padx=5)
-        
-        start_entry = ttk.Entry(start_frame)
-        start_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        start_entry.insert(0, datetime.now().strftime("%d/%m/%Y"))
-        
-        ttk.Button(start_frame, text="📅", width=3,
-                  command=lambda e=start_entry: self.show_calendar(e)).pack(side=tk.LEFT, padx=5)
-        
-        # Indication
-        ttk.Label(form_frame, text="Indication:").grid(row=5, column=0, sticky="w", pady=5)
-        indication_entry = ttk.Entry(form_frame)
-        indication_entry.grid(row=5, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Notes
-        ttk.Label(form_frame, text="Notes:").grid(row=6, column=0, sticky="w", pady=5)
-        notes_entry = tk.Text(form_frame, height=4, wrap=tk.WORD)
-        notes_entry.grid(row=6, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Button frame
-        btn_frame = ttk.Frame(form_frame)
-        btn_frame.grid(row=7, column=0, columnspan=2, pady=10)
-        
-        def save_medication():
-            new_med = {
-                "name": name_entry.get(),
-                "dose": dose_entry.get(),
-                "unit": unit_var.get(),
-                "frequency": freq_var.get(),
-                "route": route_var.get(),
-                "start_date": start_entry.get(),
-                "indication": indication_entry.get(),
-                "notes": notes_entry.get("1.0", tk.END).strip(),
-                "administrations": []
-            }
-            
-            if not new_med["name"]:
-                messagebox.showerror("Error", "Medication name is required")
-                return
-                
-            patient["MEDICATIONS"]["current"].append(new_med)
-            self.save_patient_data()
-            
-            # Update the medication window
-            if hasattr(self, 'medication_window') and self.medication_window.winfo_exists():
-                self.medication_window.destroy()
-                self.open_medication_management(patient["FILE NUMBER"])
-            
-            dialog.destroy()
-        
-        ttk.Button(btn_frame, text="Save", command=save_medication,
-                  style='Blue.TButton').pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
-    
-    def discontinue_medication(self, medication, patient):
-        """Discontinue a medication"""
-        confirm = messagebox.askyesno("Confirm", 
-                                     f"Discontinue {medication['name']}?")
-        if not confirm:
-            return
-            
-        # Set end date
-        medication["end_date"] = datetime.now().strftime("%d/%m/%Y")
-        
-        # Move to history
-        patient["MEDICATIONS"]["history"].append(medication)
-        patient["MEDICATIONS"]["current"].remove(medication)
-        
-        self.save_patient_data()
-        
-        # Refresh the medication window
-        if hasattr(self, 'medication_window') and self.medication_window.winfo_exists():
-            self.medication_window.destroy()
-            self.open_medication_management(patient["FILE NUMBER"])
-    
-    def edit_medication(self, medication, patient):
-        """Edit an existing medication"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title(f"Edit {medication['name']}")
-        dialog.geometry("600x500")
-        
-        # Form frame
-        form_frame = ttk.Frame(dialog, style='TFrame', padding=20)
-        form_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Medication name
-        ttk.Label(form_frame, text="Medication Name:").grid(row=0, column=0, sticky="w", pady=5)
-        name_entry = ttk.Entry(form_frame)
-        name_entry.insert(0, medication["name"])
-        name_entry.grid(row=0, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Dose
-        ttk.Label(form_frame, text="Dose:").grid(row=1, column=0, sticky="w", pady=5)
-        dose_frame = ttk.Frame(form_frame)
-        dose_frame.grid(row=1, column=1, sticky="ew", pady=5, padx=5)
-        
-        dose_entry = ttk.Entry(dose_frame)
-        dose_entry.insert(0, medication["dose"])
-        dose_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        unit_var = tk.StringVar(value=medication.get("unit", "mg"))
-        unit_combo = ttk.Combobox(dose_frame, textvariable=unit_var, 
-                                values=["mg", "mcg", "g", "mg/m²", "mcg/m²", "IU", "mL"])
-        unit_combo.pack(side=tk.LEFT, padx=5)
-        
-        # Frequency
-        ttk.Label(form_frame, text="Frequency:").grid(row=2, column=0, sticky="w", pady=5)
-        freq_var = tk.StringVar(value=medication.get("frequency", "Daily"))
-        freq_combo = ttk.Combobox(form_frame, textvariable=freq_var,
-                                values=["Daily", "BID", "TID", "QID", "QHS", "QOD", 
-                                       "Weekly", "Monthly", "Other"])
-        freq_combo.grid(row=2, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Route
-        ttk.Label(form_frame, text="Route:").grid(row=3, column=0, sticky="w", pady=5)
-        route_var = tk.StringVar(value=medication.get("route", "PO"))
-        route_combo = ttk.Combobox(form_frame, textvariable=route_var,
-                                 values=["PO", "IV", "IM", "SC", "Topical", "PR", "Other"])
-        route_combo.grid(row=3, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Start date
-        ttk.Label(form_frame, text="Start Date:").grid(row=4, column=0, sticky="w", pady=5)
-        start_frame = ttk.Frame(form_frame)
-        start_frame.grid(row=4, column=1, sticky="ew", pady=5, padx=5)
-        
-        start_entry = ttk.Entry(start_frame)
-        start_entry.insert(0, medication.get("start_date", datetime.now().strftime("%d/%m/%Y")))
-        start_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        ttk.Button(start_frame, text="📅", width=3,
-                  command=lambda e=start_entry: self.show_calendar(e)).pack(side=tk.LEFT, padx=5)
-        
-        # End date (if exists)
-        if "end_date" in medication:
-            ttk.Label(form_frame, text="End Date:").grid(row=5, column=0, sticky="w", pady=5)
-            end_frame = ttk.Frame(form_frame)
-            end_frame.grid(row=5, column=1, sticky="ew", pady=5, padx=5)
-            
-            end_entry = ttk.Entry(end_frame)
-            end_entry.insert(0, medication["end_date"])
-            end_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            
-            ttk.Button(end_frame, text="📅", width=3,
-                      command=lambda e=end_entry: self.show_calendar(e)).pack(side=tk.LEFT, padx=5)
-        
-        # Indication
-        ttk.Label(form_frame, text="Indication:").grid(row=6, column=0, sticky="w", pady=5)
-        indication_entry = ttk.Entry(form_frame)
-        indication_entry.insert(0, medication.get("indication", ""))
-        indication_entry.grid(row=6, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Notes
-        ttk.Label(form_frame, text="Notes:").grid(row=7, column=0, sticky="w", pady=5)
-        notes_entry = tk.Text(form_frame, height=4, wrap=tk.WORD)
-        notes_entry.insert("1.0", medication.get("notes", ""))
-        notes_entry.grid(row=7, column=1, sticky="ew", pady=5, padx=5)
-        
-        # Button frame
-        btn_frame = ttk.Frame(form_frame)
-        btn_frame.grid(row=8, column=0, columnspan=2, pady=10)
-        
-        def save_changes():
-            # Update medication details
-            medication["name"] = name_entry.get()
-            medication["dose"] = dose_entry.get()
-            medication["unit"] = unit_var.get()
-            medication["frequency"] = freq_var.get()
-            medication["route"] = route_var.get()
-            medication["start_date"] = start_entry.get()
-            if "end_date" in medication:
-                medication["end_date"] = end_entry.get()
-            medication["indication"] = indication_entry.get()
-            medication["notes"] = notes_entry.get("1.0", tk.END).strip()
-            
-            self.save_patient_data()
-            
-            # Update the medication window
-            if hasattr(self, 'medication_window') and self.medication_window.winfo_exists():
-                self.medication_window.destroy()
-                self.open_medication_management(patient["FILE NUMBER"])
-            
-            dialog.destroy()
-        
-        ttk.Button(btn_frame, text="Save", command=save_changes,
-                  style='Blue.TButton').pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
-    
-    def record_administration(self, medication, patient):
-        """Record administration of a medication"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title(f"Record Administration - {medication['name']}")
-        dialog.geometry("500x400")
-        
-        # Form frame
-        form_frame = ttk.Frame(dialog, style='TFrame', padding=20)
-        form_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Date
-        ttk.Label(form_frame, text="Administration Date:").pack(pady=5)
-        date_frame = ttk.Frame(form_frame)
-        date_frame.pack(fill=tk.X, pady=5)
-        
-        date_entry = ttk.Entry(date_frame)
-        date_entry.insert(0, datetime.now().strftime("%d/%m/%Y"))
-        date_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        ttk.Button(date_frame, text="📅", width=3,
-                  command=lambda e=date_entry: self.show_calendar(e)).pack(side=tk.LEFT, padx=5)
-        
-        # Time
-        ttk.Label(form_frame, text="Time:").pack(pady=5)
-        time_entry = ttk.Entry(form_frame)
-        time_entry.insert(0, datetime.now().strftime("%H:%M"))
-        time_entry.pack(fill=tk.X, pady=5)
-        
-        # Administered by
-        ttk.Label(form_frame, text="Administered by:").pack(pady=5)
-        admin_by_entry = ttk.Entry(form_frame)
-        admin_by_entry.insert(0, self.current_user)
-        admin_by_entry.pack(fill=tk.X, pady=5)
-        
-        # Notes
-        ttk.Label(form_frame, text="Notes:").pack(pady=5)
-        notes_entry = tk.Text(form_frame, height=5, wrap=tk.WORD)
-        notes_entry.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        # Button frame
-        btn_frame = ttk.Frame(form_frame)
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        def record_admin():
-            admin_record = {
-                "date": date_entry.get(),
-                "time": time_entry.get(),
-                "administered_by": admin_by_entry.get(),
-                "notes": notes_entry.get("1.0", tk.END).strip()
-            }
-            
-            if "administrations" not in medication:
-                medication["administrations"] = []
-                
-            medication["administrations"].append(admin_record)
-            self.save_patient_data()
-            
-            messagebox.showinfo("Success", "Administration recorded")
-            dialog.destroy()
-        
-        ttk.Button(btn_frame, text="Record", command=record_admin,
-                  style='Green.TButton').pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
-    
-    def setup_medication_history_tab(self, parent, patient):
-        """Setup the medication history tab"""
-        # Create scrollable frame
-        container = ttk.Frame(parent, style='TFrame')
-        container.pack(fill=tk.BOTH, expand=True)
-        
-        canvas = tk.Canvas(container, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas, style='TFrame')
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Header
-        ttk.Label(scrollable_frame, text="Medication History", 
-                 font=('Helvetica', 14, 'bold')).pack(pady=10)
-        
-        # Display history
-        if not patient["MEDICATIONS"]["history"]:
-            ttk.Label(scrollable_frame, text="No medication history", 
-                     style='TLabel').pack(pady=20)
-        else:
-            for med in patient["MEDICATIONS"]["history"]:
-                self.create_history_medication_card(scrollable_frame, med, patient)
-    
-    def create_history_medication_card(self, parent, medication, patient):
-        """Create a medication history card display"""
-        card_frame = ttk.Frame(parent, style='Card.TFrame', padding=10)
-        card_frame.pack(fill=tk.X, pady=5, padx=5)
-        
-        # Medication name and details
-        ttk.Label(card_frame, text=medication["name"], 
-                 font=('Helvetica', 12, 'bold')).pack(anchor="w")
-        
-        details_frame = ttk.Frame(card_frame, style='TFrame')
-        details_frame.pack(fill=tk.X, pady=5)
-        
-        # Left side - details
-        left_frame = ttk.Frame(details_frame, style='TFrame')
-        left_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        ttk.Label(left_frame, text=f"Dose: {medication['dose']} {medication['unit']}").pack(anchor="w")
-        ttk.Label(left_frame, text=f"Frequency: {medication['frequency']}").pack(anchor="w")
-        ttk.Label(left_frame, text=f"Route: {medication['route']}").pack(anchor="w")
-        
-        # Right side - dates
-        right_frame = ttk.Frame(details_frame, style='TFrame')
-        right_frame.pack(side=tk.RIGHT, fill=tk.X)
-        
-        ttk.Label(right_frame, text=f"Start: {medication['start_date']}").pack(anchor="e")
-        ttk.Label(right_frame, text=f"End: {medication['end_date']}").pack(anchor="e")
-        
-        # Administration history
-        if "administrations" in medication and medication["administrations"]:
-            admin_frame = ttk.Frame(card_frame, style='TFrame')
-            admin_frame.pack(fill=tk.X, pady=(5, 0))
-            
-            ttk.Label(admin_frame, text="Administrations:", 
-                     font=('Helvetica', 10, 'bold')).pack(anchor="w")
-            
-            for admin in medication["administrations"]:
-                admin_label = ttk.Label(admin_frame, 
-                                      text=f"{admin['date']} {admin['time']} - {admin['administered_by']}")
-                admin_label.pack(anchor="w", padx=10)
-                
-                if admin["notes"]:
-                    notes_label = ttk.Label(admin_frame, text=f"Notes: {admin['notes']}",
-                                          font=('Helvetica', 9))
-                    notes_label.pack(anchor="w", padx=20)
-        
-        # Reinstate button
-        btn_frame = ttk.Frame(card_frame, style='TFrame')
-        btn_frame.pack(fill=tk.X, pady=(5, 0))
-        
-        ttk.Button(btn_frame, text="Reinstate", 
-                  command=lambda m=medication: self.reinstate_medication(m, patient),
-                  style='Green.TButton').pack(side=tk.LEFT, padx=2)
-    
-    def reinstate_medication(self, medication, patient):
-        """Reinstate a discontinued medication"""
-        confirm = messagebox.askyesno("Confirm", 
-                                    f"Reinstate {medication['name']}?")
-        if not confirm:
-            return
-            
-        # Remove end date
-        if "end_date" in medication:
-            del medication["end_date"]
-            
-        # Move back to current medications
-        patient["MEDICATIONS"]["current"].append(medication)
-        patient["MEDICATIONS"]["history"].remove(medication)
-        
-        self.save_patient_data()
-        
-        # Refresh the medication window
-        if hasattr(self, 'medication_window') and self.medication_window.winfo_exists():
-            self.medication_window.destroy()
-            self.open_medication_management(patient["FILE NUMBER"])
-    
-    def setup_bsa_calculator_tab(self, parent, patient):
-        """Setup the BSA calculator tab"""
-        # Main frame
-        main_frame = ttk.Frame(parent, style='TFrame')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        # Header
-        ttk.Label(main_frame, text="Body Surface Area Calculator", 
-                 font=('Helvetica', 14, 'bold')).pack(pady=10)
-        
-        # Input frame
-        input_frame = ttk.Frame(main_frame, style='TFrame')
-        input_frame.pack(fill=tk.X, pady=10)
-        
-        # Height
-        ttk.Label(input_frame, text="Height (cm):").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        self.height_entry = ttk.Entry(input_frame)
-        self.height_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
-        
-        # Weight
-        ttk.Label(input_frame, text="Weight (kg):").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-        self.weight_entry = ttk.Entry(input_frame)
-        self.weight_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
-        
-        # Formula selection
-        ttk.Label(input_frame, text="Formula:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
-        self.formula_var = tk.StringVar(value="Mosteller")
-        formula_combo = ttk.Combobox(input_frame, textvariable=self.formula_var,
-                                   values=["Mosteller", "DuBois", "Haycock"])
-        formula_combo.grid(row=2, column=1, sticky="w", padx=5, pady=5)
-        
-        # Calculate button
-        btn_frame = ttk.Frame(main_frame, style='TFrame')
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        ttk.Button(btn_frame, text="Calculate BSA", 
-                  command=self.calculate_bsa,
-                  style='Blue.TButton').pack()
-        
-        # Results frame
-        self.results_frame = ttk.Frame(main_frame, style='TFrame')
-        self.results_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        
-        # Historical BSA records
-        if "BSA_HISTORY" in patient:
-            history_frame = ttk.LabelFrame(main_frame, text="BSA History", style='TFrame')
-            history_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-            
-            for record in patient["BSA_HISTORY"]:
-                record_frame = ttk.Frame(history_frame, style='TFrame')
-                record_frame.pack(fill=tk.X, pady=2)
-                
-                ttk.Label(record_frame, 
-                         text=f"{record['date']}: {record['bsa']:.2f} m² (H: {record['height']} cm, W: {record['weight']} kg)").pack(anchor="w")
-    
-    def calculate_bsa(self):
-        """Calculate body surface area"""
+    def save_edited_patient(self, original_data):
+        """Save edited patient data"""
+        # Validate date format
+        dob = self.edit_entries["DATE OF BIRTH"].get()
         try:
-            height = float(self.height_entry.get())
-            weight = float(self.weight_entry.get())
-            
-            if height <= 0 or weight <= 0:
-                raise ValueError("Height and weight must be positive numbers")
-                
-            formula = self.formula_var.get()
-            
-            if formula == "Mosteller":
-                bsa = math.sqrt(height * weight / 3600)
-            elif formula == "DuBois":
-                bsa = 0.007184 * math.pow(height, 0.725) * math.pow(weight, 0.425)
-            elif formula == "Haycock":
-                bsa = 0.024265 * math.pow(height, 0.3964) * math.pow(weight, 0.5378)
-            else:
-                bsa = math.sqrt(height * weight / 3600)  # Default to Mosteller
-            
-            # Clear previous results
-            for widget in self.results_frame.winfo_children():
-                widget.destroy()
-            
-            # Display results
-            ttk.Label(self.results_frame, 
-                     text=f"BSA: {bsa:.2f} m² ({formula} formula)",
-                     font=('Helvetica', 12, 'bold')).pack(pady=10)
-            
-            # Save button
-            ttk.Button(self.results_frame, text="Save to Patient Record",
-                      command=lambda: self.save_bsa_result(height, weight, bsa, formula),
-                      style='Green.TButton').pack(pady=10)
-            
-        except ValueError as e:
-            messagebox.showerror("Error", f"Invalid input: {str(e)}")
-    
-    def save_bsa_result(self, height, weight, bsa, formula):
-        """Save BSA result to patient record"""
-        # Get current patient from medication window title
-        title = self.medication_window.title()
-        file_no = title.split("Patient ")[1].split(")")[0]
-        
-        patient = next((p for p in self.patient_data if p.get("FILE NUMBER") == file_no), None)
-        if not patient:
-            messagebox.showerror("Error", "Patient not found")
+            datetime.strptime(dob, '%d/%m/%Y')
+        except ValueError:
+            messagebox.showerror("Error", "Invalid date format. Please use dd/mm/yyyy")
             return
             
-        if "BSA_HISTORY" not in patient:
-            patient["BSA_HISTORY"] = []
-            
-        patient["BSA_HISTORY"].append({
-            "date": datetime.now().strftime("%d/%m/%Y"),
-            "height": height,
-            "weight": weight,
-            "bsa": bsa,
-            "formula": formula
-        })
-        
-        self.save_patient_data()
-        messagebox.showinfo("Success", "BSA result saved to patient record")
-        
-        # Refresh the BSA tab
-        if hasattr(self, 'medication_window') and self.medication_window.winfo_exists():
-            self.medication_window.destroy()
-            self.open_medication_management(file_no)
-    
-    def setup_lab_results_tab(self, parent, patient):
-        """Setup the lab results tracking tab"""
-        # Main frame
-        main_frame = ttk.Frame(parent, style='TFrame')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        # Header
-        ttk.Label(main_frame, text="Lab Results Tracking", 
-                 font=('Helvetica', 14, 'bold')).pack(pady=10)
-        
-        # Add new lab button
-        ttk.Button(main_frame, text="Add New Lab Result", 
-                  command=lambda: self.add_lab_result(patient),
-                  style='Blue.TButton').pack(pady=10)
-        
-        # Lab results display
-        if "LAB_RESULTS" not in patient or not patient["LAB_RESULTS"]:
-            ttk.Label(main_frame, text="No lab results recorded", 
-                     style='TLabel').pack(pady=20)
-            return
-            
-        # Create scrollable frame
-        container = ttk.Frame(main_frame, style='TFrame')
-        container.pack(fill=tk.BOTH, expand=True)
-        
-        canvas = tk.Canvas(container, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas, style='TFrame')
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Group labs by date
-        labs_by_date = defaultdict(list)
-        for lab in patient["LAB_RESULTS"]:
-            labs_by_date[lab["date"]].append(lab)
-            
-        # Display labs sorted by date (newest first)
-        for date in sorted(labs_by_date.keys(), reverse=True):
-            date_frame = ttk.LabelFrame(scrollable_frame, text=date, style='TFrame')
-            date_frame.pack(fill=tk.X, padx=5, pady=5)
-            
-            for lab in labs_by_date[date]:
-                self.create_lab_result_display(date_frame, lab, patient)
-    
-    def create_lab_result_display(self, parent, lab, patient):
-        """Create a display for a lab result"""
-        lab_frame = ttk.Frame(parent, style='TFrame')
-        lab_frame.pack(fill=tk.X, padx=5, pady=2)
-        
-        # Test name and value
-        ttk.Label(lab_frame, text=f"{lab['test']}: {lab['value']} {lab.get('unit', '')}",
-                 font=('Helvetica', 10)).pack(side=tk.LEFT)
-        
-        # Abnormal flag
-        if lab.get("abnormal", False):
-            ttk.Label(lab_frame, text="(Abnormal)", 
-                     foreground="red").pack(side=tk.LEFT, padx=5)
-        
-        # Edit button (for admins/editors)
-        if self.users[self.current_user]["role"] in ["admin", "editor"]:
-            ttk.Button(lab_frame, text="Edit", 
-                      command=lambda l=lab: self.edit_lab_result(l, patient),
-                      style='Blue.TButton').pack(side=tk.RIGHT, padx=2)
-    
-    def add_lab_result(self, patient):
-        """Add a new lab result"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Add Lab Result")
-        dialog.geometry("500x400")
-        
-        # Form frame
-        form_frame = ttk.Frame(dialog, style='TFrame', padding=20)
-        form_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Test name
-        ttk.Label(form_frame, text="Test Name:").pack(pady=5)
-        test_combo = ttk.Combobox(form_frame, 
-                                values=["WBC", "Hemoglobin", "Platelets", "Neutrophils", 
-                                       "Lymphocytes", "Urea", "Creatinine", "Sodium", 
-                                       "Potassium", "Chloride", "Calcium", "Magnesium",
-                                       "AST", "ALT", "Total Bilirubin", "Direct Bilirubin",
-                                       "ALP", "LDH", "Ferritin", "PT", "APTT", "INR",
-                                       "Fibrinogen", "D-Dimer", "EF%"])
-        test_combo.pack(fill=tk.X, pady=5)
-        
-        # Value
-        ttk.Label(form_frame, text="Value:").pack(pady=5)
-        value_entry = ttk.Entry(form_frame)
-        value_entry.pack(fill=tk.X, pady=5)
-        
-        # Unit
-        ttk.Label(form_frame, text="Unit:").pack(pady=5)
-        unit_entry = ttk.Entry(form_frame)
-        unit_entry.pack(fill=tk.X, pady=5)
-        
-        # Date
-        ttk.Label(form_frame, text="Date:").pack(pady=5)
-        date_frame = ttk.Frame(form_frame)
-        date_frame.pack(fill=tk.X, pady=5)
-        
-        date_entry = ttk.Entry(date_frame)
-        date_entry.insert(0, datetime.now().strftime("%d/%m/%Y"))
-        date_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        ttk.Button(date_frame, text="📅", width=3,
-                  command=lambda e=date_entry: self.show_calendar(e)).pack(side=tk.LEFT, padx=5)
-        
-        # Abnormal checkbox
-        abnormal_var = tk.BooleanVar()
-        abnormal_check = ttk.Checkbutton(form_frame, text="Abnormal Result",
-                                       variable=abnormal_var)
-        abnormal_check.pack(pady=5)
-        
-        # Notes
-        ttk.Label(form_frame, text="Notes:").pack(pady=5)
-        notes_entry = tk.Text(form_frame, height=5, wrap=tk.WORD)
-        notes_entry.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        # Button frame
-        btn_frame = ttk.Frame(form_frame)
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        def save_lab():
-            new_lab = {
-                "test": test_combo.get(),
-                "value": value_entry.get(),
-                "unit": unit_entry.get(),
-                "date": date_entry.get(),
-                "abnormal": abnormal_var.get(),
-                "notes": notes_entry.get("1.0", tk.END).strip(),
-                "entered_by": self.current_user,
-                "entry_date": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            }
-            
-            if not new_lab["test"] or not new_lab["value"]:
-                messagebox.showerror("Error", "Test name and value are required")
-                return
-                
-            if "LAB_RESULTS" not in patient:
-                patient["LAB_RESULTS"] = []
-                
-            patient["LAB_RESULTS"].append(new_lab)
-            self.save_patient_data()
-            
-            # Update the lab results tab
-            if hasattr(self, 'medication_window') and self.medication_window.winfo_exists():
-                self.medication_window.destroy()
-                self.open_medication_management(patient["FILE NUMBER"])
-            
-            dialog.destroy()
-        
-        ttk.Button(btn_frame, text="Save", command=save_lab,
-                  style='Blue.TButton').pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
-    
-    def edit_lab_result(self, lab, patient):
-        """Edit an existing lab result"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title(f"Edit Lab Result - {lab['test']}")
-        dialog.geometry("500x400")
-        
-        # Form frame
-        form_frame = ttk.Frame(dialog, style='TFrame', padding=20)
-        form_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Test name
-        ttk.Label(form_frame, text="Test Name:").pack(pady=5)
-        test_entry = ttk.Entry(form_frame)
-        test_entry.insert(0, lab["test"])
-        test_entry.pack(fill=tk.X, pady=5)
-        
-        # Value
-        ttk.Label(form_frame, text="Value:").pack(pady=5)
-        value_entry = ttk.Entry(form_frame)
-        value_entry.insert(0, lab["value"])
-        value_entry.pack(fill=tk.X, pady=5)
-        
-        # Unit
-        ttk.Label(form_frame, text="Unit:").pack(pady=5)
-        unit_entry = ttk.Entry(form_frame)
-        unit_entry.insert(0, lab.get("unit", ""))
-        unit_entry.pack(fill=tk.X, pady=5)
-        
-        # Date
-        ttk.Label(form_frame, text="Date:").pack(pady=5)
-        date_frame = ttk.Frame(form_frame)
-        date_frame.pack(fill=tk.X, pady=5)
-        
-        date_entry = ttk.Entry(date_frame)
-        date_entry.insert(0, lab["date"])
-        date_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        ttk.Button(date_frame, text="📅", width=3,
-                  command=lambda e=date_entry: self.show_calendar(e)).pack(side=tk.LEFT, padx=5)
-        
-        # Abnormal checkbox
-        abnormal_var = tk.BooleanVar(value=lab.get("abnormal", False))
-        abnormal_check = ttk.Checkbutton(form_frame, text="Abnormal Result",
-                                       variable=abnormal_var)
-        abnormal_check.pack(pady=5)
-        
-        # Notes
-        ttk.Label(form_frame, text="Notes:").pack(pady=5)
-        notes_entry = tk.Text(form_frame, height=5, wrap=tk.WORD)
-        notes_entry.insert("1.0", lab.get("notes", ""))
-        notes_entry.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        # Button frame
-        btn_frame = ttk.Frame(form_frame)
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        def save_changes():
-            lab["test"] = test_entry.get()
-            lab["value"] = value_entry.get()
-            lab["unit"] = unit_entry.get()
-            lab["date"] = date_entry.get()
-            lab["abnormal"] = abnormal_var.get()
-            lab["notes"] = notes_entry.get("1.0", tk.END).strip()
-            
-            self.save_patient_data()
-            
-            # Update the lab results tab
-            if hasattr(self, 'medication_window') and self.medication_window.winfo_exists():
-                self.medication_window.destroy()
-                self.open_medication_management(patient["FILE NUMBER"])
-            
-            dialog.destroy()
-        
-        ttk.Button(btn_frame, text="Save", command=save_changes,
-                  style='Blue.TButton').pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="Delete", 
-                  command=lambda: self.delete_lab_result(lab, patient, dialog),
-                  style='Red.TButton').pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
-    
-    def delete_lab_result(self, lab, patient, dialog):
-        """Delete a lab result"""
-        confirm = messagebox.askyesno("Confirm", 
-                                     f"Delete {lab['test']} result from {lab['date']}?")
-        if not confirm:
-            return
-            
-        patient["LAB_RESULTS"].remove(lab)
-        self.save_patient_data()
-        
-        # Update the lab results tab
-        if hasattr(self, 'medication_window') and self.medication_window.winfo_exists():
-            self.medication_window.destroy()
-            self.open_medication_management(patient["FILE NUMBER"])
-        
-        dialog.destroy()
-
-    def delete_lab_result(self, lab, patient, dialog):
-        """Delete a lab result"""
-        confirm = messagebox.askyesno("Confirm", 
-                                     f"Delete {lab['test']} result from {lab['date']}?")
-        if not confirm:
-            return
-            
-        patient["LAB_RESULTS"].remove(lab)
-        self.save_patient_data()
-        
-        # Update the lab results tab
-        if hasattr(self, 'medication_window') and self.medication_window.winfo_exists():
-            self.medication_window.destroy()
-            self.open_medication_management(patient["FILE NUMBER"])
-        
-        dialog.destroy()
-
-    # ==============================================
-    # F&N Documentation Feature (Requested Addition)
-    # ==============================================
-    def setup_fn_documentation(self):
-        """Setup F&N documentation feature"""
-        if not hasattr(self, 'fn_path'):
-            # Initialize with default path if not set
-            self.fn_path = ""
-            
-        # Create dialog for path selection
-        dialog = tk.Toplevel(self.root)
-        dialog.title("F&N Documentation Setup")
-        dialog.geometry("600x200")
-        
-        # Main frame
-        main_frame = ttk.Frame(dialog, padding=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Current path display
-        ttk.Label(main_frame, text="Current F&N Documentation Path:").pack(pady=5)
-        path_label = ttk.Label(main_frame, text=self.fn_path if self.fn_path else "Not set")
-        path_label.pack(pady=5)
-        
-        # Button frame
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(pady=10)
-        
-        def browse_path():
-            path = filedialog.askopenfilename(title="Select F&N Documentation Executable",
-                                             filetypes=[("Executable files", "*.exe")])
-            if path:
-                self.fn_path = path
-                path_label.config(text=path)
-                # Save to config file
-                self.save_config()
-                
-        def run_fn():
-            if not self.fn_path:
-                messagebox.showerror("Error", "No F&N documentation path set")
-                return
-            try:
-                subprocess.Popen(self.fn_path)
-            except Exception as e:
-                messagebox.showerror("Error", f"Could not launch F&N documentation: {e}")
-        
-        ttk.Button(btn_frame, text="Browse", command=browse_path).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Run F&N Documentation", command=run_fn,
-                  style='Blue.TButton').pack(side=tk.LEFT, padx=5)
-        
-        # Only show edit button for mej.esam
-        if self.current_user == "mej.esam":
-            def edit_path():
-                new_path = simpledialog.askstring("Edit Path", 
-                                                 "Enter new F&N Documentation path:",
-                                                 initialvalue=self.fn_path)
-                if new_path is not None:
-                    self.fn_path = new_path
-                    path_label.config(text=new_path)
-                    self.save_config()
-                    
-            ttk.Button(btn_frame, text="Edit Path", command=edit_path,
-                      style='Green.TButton').pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="Close", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
-
-    def save_config(self):
-        """Save configuration settings"""
-        config = {
-            'fn_path': self.fn_path,
-            # Add other config settings here
+        updated_data = {
+            "MALIGNANCY": original_data.get("MALIGNANCY", ""),
+            "CREATED_BY": original_data.get("CREATED_BY", ""),
+            "CREATED_DATE": original_data.get("CREATED_DATE", ""),
+            "LAST_MODIFIED_BY": self.current_user,
+            "LAST_MODIFIED_DATE": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         }
-        with open('config.json', 'w') as f:
-            json.dump(config, f)
-
-    def load_config(self):
-        """Load configuration settings"""
-        try:
-            with open('config.json', 'r') as f:
-                config = json.load(f)
-                self.fn_path = config.get('fn_path', "")
-        except FileNotFoundError:
-            self.fn_path = ""
-
-    # ==============================================
-    # Settings Management (Requested Addition)
-    # ==============================================
-    def open_settings(self):
-        """Open settings window (only for mej.esam)"""
-        if self.current_user != "mej.esam":
-            messagebox.showerror("Access Denied", "Only mej.esam can access settings")
-            return
-            
-        settings_window = tk.Toplevel(self.root)
-        settings_window.title("Application Settings")
-        settings_window.geometry("800x600")
         
-        # Notebook for different setting categories
-        notebook = ttk.Notebook(settings_window)
-        notebook.pack(fill=tk.BOTH, expand=True)
+        for field, widget in self.edit_entries.items():
+            if isinstance(widget, tk.Listbox):  # Multi-select fields
+                selected = [widget.get(i) for i in widget.curselection()]
+                if "OTHERS" in selected and f"{field}_OTHERS" in self.edit_entries:
+                    others_text = self.edit_entries[f"{field}_OTHERS"].get()
+                    if others_text:
+                        selected[selected.index("OTHERS")] = f"OTHERS: {others_text}"
+                updated_data[field] = ", ".join(selected) if selected else ""
+            elif isinstance(widget, tk.StringVar):  # Combobox
+                updated_data[field] = widget.get()
+            else:  # Entry fields
+                updated_data[field] = widget.get()
         
-        # Dropdown Lists Settings Tab
-        dropdown_frame = ttk.Frame(notebook)
-        notebook.add(dropdown_frame, text="Dropdown Lists")
-        self.setup_dropdown_settings(dropdown_frame)
+        # Update the record
+        file_no = original_data.get("FILE NUMBER")
+        for i, patient in enumerate(self.patient_data):
+            if patient.get("FILE NUMBER") == file_no:
+                self.patient_data[i] = updated_data
+                break
         
-        # Path Settings Tab
-        path_frame = ttk.Frame(notebook)
-        notebook.add(path_frame, text="Paths")
-        self.setup_path_settings(path_frame)
+        # Sort patient data by file number (numeric)
+        self.patient_data.sort(key=lambda x: int(x.get("FILE NUMBER", 0)))
+        self.save_patient_data()
         
-        # Data Management Tab
-        data_frame = ttk.Frame(notebook)
-        notebook.add(data_frame, text="Data Management")
-        self.setup_data_management_settings(data_frame)
+        # Update patient report
+        self.create_patient_report(file_no, create_only=True)
         
-        # Close button
-        btn_frame = ttk.Frame(settings_window)
-        btn_frame.pack(fill=tk.X, pady=10)
+        # Upload to Google Drive in background
+        self.executor.submit(self.upload_patient_to_drive, updated_data)
         
-        ttk.Button(btn_frame, text="Close", command=settings_window.destroy,
-                  style='Blue.TButton').pack()
-
-    def setup_dropdown_settings(self, parent):
-        """Setup dropdown list editing interface"""
-        # Create scrollable frame
-        container = ttk.Frame(parent)
-        container.pack(fill=tk.BOTH, expand=True)
+        # Show confirmation message
+        messagebox.showinfo("Success", "Patient data updated successfully!")
         
-        canvas = tk.Canvas(container, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
+        # Force the message box to display and process events
+        self.root.update()
         
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Header
-        ttk.Label(scrollable_frame, text="Edit Dropdown Options", 
-                 font=('Helvetica', 14, 'bold')).pack(pady=10)
-        
-        # Create editable fields for each dropdown
-        for category, options in DROPDOWN_OPTIONS.items():
-            frame = ttk.LabelFrame(scrollable_frame, text=category)
-            frame.pack(fill=tk.X, padx=5, pady=5)
-            
-            # Current options display
-            ttk.Label(frame, text="Current Options:").pack(anchor="w")
-            current_text = tk.Text(frame, height=4, width=50)
-            current_text.insert("1.0", "\n".join(options))
-            current_text.config(state=tk.DISABLED)
-            current_text.pack(fill=tk.X, padx=5, pady=5)
-            
-            # Edit field
-            ttk.Label(frame, text="New Options (one per line):").pack(anchor="w")
-            edit_text = tk.Text(frame, height=4, width=50)
-            edit_text.pack(fill=tk.X, padx=5, pady=5)
-            
-            # Update button
-            def update_options(cat=category, text_widget=edit_text):
-                new_options = text_widget.get("1.0", tk.END).strip().split("\n")
-                new_options = [opt.strip() for opt in new_options if opt.strip()]
-                DROPDOWN_OPTIONS[cat] = new_options
-                self.save_dropdown_options()
-                messagebox.showinfo("Success", f"{cat} options updated")
+        # Now show the updated patient view
+        self.view_patient(updated_data)
                 
-            ttk.Button(frame, text="Update", command=update_options,
-                      style='Blue.TButton').pack(pady=5)
-
-    def save_dropdown_options(self):
-        """Save dropdown options to file"""
-        with open('dropdown_options.json', 'w') as f:
-            json.dump(DROPDOWN_OPTIONS, f, indent=4)
-
-    def setup_path_settings(self, parent):
-        """Setup path management interface"""
-        ttk.Label(parent, text="Application Path Settings", 
-                 font=('Helvetica', 14, 'bold')).pack(pady=10)
+    def delete_patient(self, patient_data):
+        """Delete a patient record"""
+        if self.current_user != "mej.esam":
+            messagebox.showerror("Access Denied", "Only 'mej.esam' can delete patients.")
+            return
         
-        # F&N Documentation Path
-        fn_frame = ttk.Frame(parent)
-        fn_frame.pack(fill=tk.X, padx=10, pady=5)
+        confirm = messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this patient?")
+        if not confirm:
+            return
         
-        ttk.Label(fn_frame, text="F&N Documentation Path:").pack(side=tk.LEFT)
-        self.fn_path_entry = ttk.Entry(fn_frame)
-        self.fn_path_entry.insert(0, self.fn_path)
-        self.fn_path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        file_no = patient_data.get("FILE NUMBER")
         
-        ttk.Button(fn_frame, text="Browse", 
-                  command=self.browse_fn_path).pack(side=tk.LEFT)
+        # Remove from local data
+        self.patient_data = [patient for patient in self.patient_data if patient.get("FILE NUMBER") != file_no]
+        self.save_patient_data()
         
-        # Save button
-        ttk.Button(parent, text="Save Path Settings", 
-                  command=self.save_path_settings,
-                  style='Green.TButton').pack(pady=10)
-
-    def browse_fn_path(self):
-        """Browse for F&N documentation executable"""
-        path = filedialog.askopenfilename(title="Select F&N Documentation Executable",
-                                        filetypes=[("Executable files", "*.exe")])
-        if path:
-            self.fn_path_entry.delete(0, tk.END)
-            self.fn_path_entry.insert(0, path)
-
-    def save_path_settings(self):
-        """Save path settings"""
-        self.fn_path = self.fn_path_entry.get()
-        self.save_config()
-        messagebox.showinfo("Success", "Path settings saved")
-
-    def setup_data_management_settings(self, parent):
-        """Setup data management interface"""
-        ttk.Label(parent, text="Data Management", 
-                 font=('Helvetica', 14, 'bold')).pack(pady=10)
+        # Remove from Google Drive in background
+        if self.drive.initialized:
+            self.executor.submit(self.delete_patient_from_drive, file_no)
         
-        # Delete local patient folders
-        ttk.Button(parent, text="Delete All Local Patient Folders", 
-                  command=self.confirm_delete_folders,
-                  style='Red.TButton').pack(pady=10)
-        
-        # Export/Import settings
-        ttk.Label(parent, text="Data Transfer:").pack(pady=5)
-        
-        btn_frame = ttk.Frame(parent)
-        btn_frame.pack(pady=5)
-        
-        ttk.Button(btn_frame, text="Export All Data", 
-                  command=self.export_all_data).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="Import Data", 
-                  command=self.import_data).pack(side=tk.LEFT, padx=5)
-
-    def confirm_delete_folders(self):
-        """Confirm deletion of all local patient folders"""
-        confirm = messagebox.askyesno("Confirm", 
-                                     "This will delete ALL local patient folders.\n"
-                                     "Make sure all data is backed up!\n\n"
-                                     "Are you absolutely sure?")
-        if confirm:
-            self.delete_all_patient_folders()
-
-    def delete_all_patient_folders(self):
-        """Delete all local patient folders"""
+        # Delete local folder
         try:
-            for patient in self.patient_data:
-                folder_name = f"Patient_{patient['FILE NUMBER']}"
-                if os.path.exists(folder_name):
-                    shutil.rmtree(folder_name)
-            messagebox.showinfo("Success", "All local patient folders deleted")
+            folder_name = f"Patient_{file_no}"
+            if os.path.exists(folder_name):
+                shutil.rmtree(folder_name)
         except Exception as e:
-            messagebox.showerror("Error", f"Could not delete folders: {e}")
+            print(f"Error deleting patient folder: {e}")
+        
+        messagebox.showinfo("Success", "Patient deleted successfully!")
+        self.search_patient()
+    
+    def delete_patient_from_drive(self, file_no):
+        """Delete patient data and folder from Google Drive"""
+        if not self.drive.initialized:
+            return False
+        
+        try:
+            # Delete patient data file
+            file_name = f"patient_{file_no}.json"
+            query = f"name='{file_name}' and '{self.drive.app_folder_id}' in parents and trashed=false"
+            results = self.drive.service.files().list(q=query, fields="files(id)").execute()
+            items = results.get('files', [])
+            
+            if items:
+                self.drive.service.files().delete(fileId=items[0]['id']).execute()
+            
+            # Delete patient folder
+            folder_name = f"Patient_{file_no}"
+            query = f"name='{folder_name}' and '{self.drive.patients_folder_id}' in parents and trashed=false"
+            results = self.drive.service.files().list(q=query, fields="files(id)").execute()
+            items = results.get('files', [])
+            
+            if items:
+                self.drive.service.files().delete(fileId=items[0]['id']).execute()
+            
+            return True
+        except Exception as e:
+            print(f"Error deleting patient from Google Drive: {e}")
+            return False
+    
+    def backup_data(self):
+        """Create a backup of patient data"""
+        if not self.patient_data:
+            messagebox.showerror("Error", "No data available to back up.")
+            return
 
-    # ==============================================
-    # Main Menu Updates (Requested Additions)
-    # ==============================================
-    def main_menu(self):
-        """Display the main menu with organized buttons"""
+        # Local backup
+        backup_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            title="Save Backup As"
+        )
+        if not backup_path:
+            return
+
+        try:
+            with open(backup_path, 'w') as f:
+                json.dump(self.patient_data, f, indent=4)
+            
+            # Upload backup to Google Drive
+            if self.drive.initialized:
+                backup_name = os.path.basename(backup_path)
+                self.drive.upload_file(backup_path, backup_name, self.drive.app_folder_id)
+            
+            messagebox.showinfo("Success", f"Data backed up to {backup_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to back up data: {e}")
+    
+    def restore_data(self):
+        """Restore patient data from backup"""
+        if self.current_user != "mej.esam":
+            messagebox.showerror("Access Denied", "Only 'mej.esam' can restore data.")
+            return
+
+        restore_path = filedialog.askopenfilename(
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            title="Select Backup File"
+        )
+        if not restore_path:
+            return
+
+        try:
+            with open(restore_path, 'r') as f:
+                data = json.load(f)
+            
+            self.patient_data = data
+            # Sort patient data by file number (numeric)
+            self.patient_data.sort(key=lambda x: int(x.get("FILE NUMBER", 0)))
+            self.save_patient_data()
+            
+            # Upload restored data to Google Drive
+            if self.drive.initialized:
+                for patient in self.patient_data:
+                    self.drive.upload_patient_data(patient)
+            
+            messagebox.showinfo("Success", "Data restored successfully.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to restore data: {e}")
+    
+    def export_all_data(self):
+        """Export all patient data to Excel"""
+        if self.users[self.current_user]["role"] != "admin":
+            messagebox.showerror("Access Denied", "Only admins can export all patient data.")
+            return
+
+        if not self.patient_data:
+            messagebox.showerror("Error", "No data to export.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            title="Save All Patient Data As"
+        )
+        if not file_path:
+            return
+
+        try:
+            # Create a Pandas Excel writer using XlsxWriter as the engine
+            with pd.ExcelWriter(file_path, engine='xlsxwriter') as writer:
+                # Create a sheet for each malignancy type
+                for malignancy in MALIGNANCIES:
+                    malignancy_data = [patient for patient in self.patient_data if patient.get("MALIGNANCY") == malignancy]
+                    if malignancy_data:
+                        df = pd.DataFrame(malignancy_data)
+                        df.to_excel(writer, sheet_name=malignancy, index=False)
+                
+                # Create a sheet with all patients
+                df = pd.DataFrame(self.patient_data)
+                df.to_excel(writer, sheet_name="ALL PATIENTS", index=False)
+            
+            # Upload to Google Drive
+            if self.drive.initialized:
+                self.drive.upload_file(file_path, os.path.basename(file_path), self.drive.app_folder_id)
+            
+            messagebox.showinfo("Success", f"All patient data exported to {file_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export data: {e}")
+    
+    def view_all_patients(self):
+        """View all patient records in a table"""
+        if self.users[self.current_user]["role"] != "admin":
+            messagebox.showerror("Access Denied", "Only admins can view all patient records.")
+            return
+
+        if not self.patient_data:
+            messagebox.showerror("Error", "No data available to display.")
+            return
+
         self.clear_frame()
 
         # Main container with gradient background
@@ -3523,141 +2335,232 @@ class OncologyApp:
         logo_frame.pack(expand=True, fill=tk.BOTH, padx=40, pady=40)
         
         # App name with modern font
-        tk.Label(logo_frame, text=f"Welcome, {self.current_user}", font=('Helvetica', 16, 'bold'), 
-                bg='#3498db', fg='white').pack(pady=(0, 10))
-        
         tk.Label(logo_frame, text="OncoCare", font=('Helvetica', 24, 'bold'), 
                 bg='#3498db', fg='white').pack(pady=(0, 10))
         
-        tk.Label(logo_frame, text="Main Menu", 
+        tk.Label(logo_frame, text="All Patients", 
                 font=('Helvetica', 14), bg='#3498db', fg='white').pack(pady=(0, 40))
         
-        # Right side with menu buttons
+        # Right side with content
         right_frame = tk.Frame(main_frame, bg='white')
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        
-        # Menu form container
-        form_container = ttk.Frame(right_frame, style='TFrame')
-        form_container.place(relx=0.5, rely=0.5, anchor='center')
 
-        # Button grid
-        btn_frame = ttk.Frame(form_container, style='TFrame')
-        btn_frame.pack(fill=tk.BOTH, expand=True, pady=20)
+        # Filter frame
+        filter_frame = ttk.Frame(right_frame, style='TFrame')
+        filter_frame.pack(fill=tk.X, padx=20, pady=10)
 
-        # First row - Patient Management (Blue buttons)
-        row1_frame = ttk.Frame(btn_frame, style='TFrame')
-        row1_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(filter_frame, text="Filter by Malignancy:", 
+                 font=('Helvetica', 12)).pack(side=tk.LEFT, padx=5)
         
-        if self.users[self.current_user]["role"] in ["admin", "editor"]:
-            ttk.Button(row1_frame, text="Add New Patient", command=self.add_patient,
-                      style='Blue.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
+        self.malignancy_filter = ttk.Combobox(filter_frame, values=MALIGNANCIES, state="readonly")
+        self.malignancy_filter.pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(filter_frame, text="Apply Filter", command=self.apply_malignancy_filter,
+                  style='Blue.TButton').pack(side=tk.LEFT, padx=10)
+        
+        # View all button (outside the filter frame)
+        ttk.Button(filter_frame, text="View All Patients", command=self.display_all_patients,
+                  style='Blue.TButton').pack(side=tk.RIGHT, padx=10)
+
+        # Main content
+        content_frame = ttk.Frame(right_frame, style='TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Create a frame for the canvas and scrollbars
+        container = ttk.Frame(content_frame, style='TFrame')
+        container.pack(fill=tk.BOTH, expand=True)
+
+        # Create a canvas for scrolling
+        canvas = tk.Canvas(container, highlightthickness=0)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Add a vertical scrollbar
+        y_scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Add a horizontal scrollbar with increased height
+        x_scrollbar = ttk.Scrollbar(content_frame, orient="horizontal", command=canvas.xview)
+        x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X, pady=5, ipady=10)
+
+        canvas.configure(xscrollcommand=x_scrollbar.set, yscrollcommand=y_scrollbar.set)
+
+        # Create a frame inside the canvas to hold the table
+        self.table_frame = ttk.Frame(canvas, style='TFrame')
+        canvas.create_window((0, 0), window=self.table_frame, anchor="nw")
+
+        def on_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        self.table_frame.bind("<Configure>", on_configure)
+
+        # Load and display all data by default
+        self.display_all_patients()
+
+        # Button frame
+        btn_frame = ttk.Frame(right_frame, padding="10 10 10 10", style='TFrame')
+        btn_frame.pack(fill=tk.X)
+
+        ttk.Button(btn_frame, text="Back to Menu", command=self.main_menu,
+                  style='Blue.TButton').pack(fill=tk.X, pady=10)
+    
+    def display_all_patients(self, malignancy_filter=None):
+        """Display all patients in a table, optionally filtered by malignancy"""
+        # Clear previous data
+        for widget in self.table_frame.winfo_children():
+            widget.destroy()
+
+        if not self.patient_data:
+            ttk.Label(self.table_frame, text="No patient data available", style='TLabel').pack(pady=20)
+            return
+
+        # Filter by malignancy if needed and sort by file number (numeric)
+        if malignancy_filter:
+            data = sorted([patient for patient in self.patient_data 
+                          if patient.get("MALIGNANCY") == malignancy_filter],
+                         key=lambda x: int(x.get("FILE NUMBER", 0)))
         else:
-            # Empty space to maintain layout
-            ttk.Frame(row1_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        
-        ttk.Button(row1_frame, text="Search Patient", command=self.search_patient,
-                  style='Blue.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        
-        if self.users[self.current_user]["role"] == "admin":
-            ttk.Button(row1_frame, text="View All Patients", command=self.view_all_patients,
-                      style='Blue.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            # Empty space to maintain layout
-            ttk.Frame(row1_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
+            data = sorted(self.patient_data, key=lambda x: int(x.get("FILE NUMBER", 0)))
 
-        # Second row - Data Operations (Green buttons)
-        row2_frame = ttk.Frame(btn_frame, style='TFrame')
-        row2_frame.pack(fill=tk.X, pady=5)
+        # Create a table-like structure
+        columns = ["FILE NUMBER", "NAME", "MALIGNANCY", "GENDER", "AGE ON DIAGNOSIS", "DIAGNOSIS"]
+
+        # Set a fixed width for all cells
+        cell_width = 20
+
+        # Create header row
+        header_row = ttk.Frame(self.table_frame, style='TFrame')
+        header_row.pack(fill=tk.X)
+
+        for col in columns:
+            header_cell = ttk.Label(header_row, text=col, 
+                                  font=('Helvetica', 10, 'bold'), 
+                                  anchor="center", borderwidth=1, relief="solid", 
+                                  width=cell_width)
+            header_cell.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, ipadx=5, ipady=5)
+
+        # Create data rows with alternating colors
+        for i, patient in enumerate(data):
+            row_frame = ttk.Frame(self.table_frame, style='TFrame')
+            row_frame.pack(fill=tk.X)
+
+            bg_color = '#f0f7ff' if i % 2 == 0 else '#e6f2ff'
+
+            for col in columns:
+                cell = tk.Label(row_frame, text=patient.get(col, ""), 
+                              font=('Helvetica', 10), 
+                              anchor="center", borderwidth=1, relief="solid", 
+                              width=cell_width, bg=bg_color)
+                cell.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, ipadx=5, ipady=5)
+                # Bind double-click to view patient
+                cell.bind("<Double-1>", lambda e, p=patient: self.view_patient(p))
+
+    def apply_malignancy_filter(self):
+        """Apply malignancy filter to the patient table"""
+        malignancy = self.malignancy_filter.get()
+        if malignancy:
+            self.display_all_patients(malignancy)
+    
+    def open_statistics_window(self):
+        """Open the statistics window"""
+        if self.users[self.current_user]["role"] not in ["admin", "editor"]:
+            messagebox.showerror("Access Denied", "Only admins and editors can access statistics.")
+            return
+
+        self.clear_frame()
+
+        # Main container with gradient background
+        main_frame = tk.Frame(self.root, bg='white')
+        main_frame.pack(expand=True, fill=tk.BOTH)
         
-        if self.users[self.current_user]["role"] == "admin":
-            ttk.Button(row2_frame, text="Export All Data", command=self.export_all_data,
-                      style='Green.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
+        # Left side with logo and app name
+        left_frame = tk.Frame(main_frame, bg='#3498db')
+        left_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+        
+        # App logo and name
+        logo_frame = tk.Frame(left_frame, bg='#3498db')
+        logo_frame.pack(expand=True, fill=tk.BOTH, padx=40, pady=40)
+        
+        # App name with modern font
+        tk.Label(logo_frame, text="OncoCare", font=('Helvetica', 24, 'bold'), 
+                bg='#3498db', fg='white').pack(pady=(0, 10))
+        
+        tk.Label(logo_frame, text="Statistics", 
+                font=('Helvetica', 14), bg='#3498db', fg='white').pack(pady=(0, 40))
+        
+        # Right side with content
+        right_frame = tk.Frame(main_frame, bg='white')
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        # Back button
+        btn_frame = ttk.Frame(right_frame, padding="20 20 20 20", style='TFrame')
+        btn_frame.pack(fill=tk.X)
+
+        ttk.Button(btn_frame, text="Back to Menu", command=self.main_menu,
+                   style='Blue.TButton').pack(fill=tk.X, pady=10, ipady=10)
+        
+        # Header
+        header_frame = ttk.Frame(right_frame, style='TFrame')
+        header_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        ttk.Label(header_frame, text="Statistics", 
+                 font=('Helvetica', 18, 'bold'),
+                 foreground=self.secondary_color).pack(side=tk.LEFT)
+
+        # Main content
+        stats_frame = ttk.Frame(right_frame, style='TFrame')
+        stats_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        # Malignancy distribution
+        ttk.Label(stats_frame, text="Malignancy Distribution", 
+                 font=('Helvetica', 14, 'bold')).pack(pady=10)
+
+        if not self.patient_data:
+            ttk.Label(stats_frame, text="No patient data available", style='TLabel').pack(pady=20)
+            return
+
+        malignancy_counts = defaultdict(int)
+        for patient in self.patient_data:
+            malignancy = patient.get("MALIGNANCY", "Unknown")
+            malignancy_counts[malignancy] += 1
+
+        if not malignancy_counts:
+            ttk.Label(stats_frame, text="No data to display", style='TLabel').pack(pady=20)
+            return
+
+        # Create statistics text
+        total_patients = sum(malignancy_counts.values())
+        stats_text = "Malignancy Statistics:\n\n"
+        
+        for malignancy, count in sorted(malignancy_counts.items(), key=lambda x: x[1], reverse=True):
+            percentage = (count / total_patients) * 100
+            stats_text += f"{malignancy}: {count} patients ({percentage:.1f}%)\n"
+        
+        stats_label = ttk.Label(stats_frame, text=stats_text, 
+                              font=('Helvetica', 12), justify='left')
+        stats_label.pack(pady=10)
+
+        # Create pie chart
+        fig, ax = plt.subplots(figsize=(8, 6))
+        labels = list(malignancy_counts.keys())
+        sizes = list(malignancy_counts.values())
+        colors = [MALIGNANCY_COLORS.get(m, '#999999') for m in labels]
+
+        ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+        ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+        ax.set_title('Malignancy Distribution')
+
+        # Display the plot in a Tkinter window
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        canvas = FigureCanvasTkAgg(fig, master=stats_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    
+    def manage_users(self):
+        """Manage user accounts"""
+        if self.current_user != "mej.esam" and self.users[self.current_user]["role"] != "admin":
+            messagebox.showerror("Access Denied", "Only admins can manage users")
+            return
             
-            ttk.Button(row2_frame, text="Backup Data", command=self.backup_data,
-                      style='Green.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-            
-            if self.current_user == "mej.esam":
-                ttk.Button(row2_frame, text="Restore Data", command=self.restore_data,
-                          style='Green.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-            else:
-                # Empty space to maintain layout
-                ttk.Frame(row2_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-        # Third row - Clinical Tools (Yellow buttons)
-        row3_frame = ttk.Frame(btn_frame, style='TFrame')
-        row3_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Button(row3_frame, text="CHEMO PROTOCOLS", command=self.show_chemo_protocols,
-                  style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        
-        ttk.Button(row3_frame, text="CHEMO SHEETS", command=self.show_chemo_sheets,
-                  style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        
-        if self.users[self.current_user]["role"] in ["admin", "pharmacist"]:
-            ttk.Button(row3_frame, text="CHEMO STOCKS", command=self.show_chemo_stocks,
-                      style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            # Empty space to maintain layout
-            ttk.Frame(row3_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        
-        if self.users[self.current_user]["role"] in ["admin", "editor"]:
-            ttk.Button(row3_frame, text="Statistics", command=self.show_statistics,
-                      style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            # Empty space to maintain layout
-            ttk.Frame(row3_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-        # Fourth row - New Features (Purple buttons)
-        row4_frame = ttk.Frame(btn_frame, style='TFrame')
-        row4_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Button(row4_frame, text="F&N Documentation", command=self.setup_fn_documentation,
-                  style='Purple.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        
-        if self.current_user == "mej.esam":
-            ttk.Button(row4_frame, text="Settings", command=self.open_settings,
-                      style='Purple.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            # Empty space to maintain layout
-            ttk.Frame(row4_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-        # Fifth row - User Management (Brown buttons)
-        row5_frame = ttk.Frame(btn_frame, style='TFrame')
-        row5_frame.pack(fill=tk.X, pady=5)
-        
-        if self.current_user == "mej.esam" or self.users[self.current_user]["role"] == "admin":
-            ttk.Button(row5_frame, text="Manage Users", command=self.manage_users,
-                      style='Brown.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-            
-            ttk.Button(row5_frame, text="Change Password", command=self.change_password,
-                      style='Brown.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            # Empty space to maintain layout
-            ttk.Frame(row5_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-        # Sixth row - Logout (Red button)
-        row6_frame = ttk.Frame(btn_frame, style='TFrame')
-        row6_frame.pack(fill=tk.X, pady=(20, 5))
-        
-        ttk.Button(row6_frame, text="Logout", command=self.setup_login_screen,
-                  style='Red.TButton').pack(fill=tk.X, ipady=10)
-
-    # ... [Previous code in main_menu()] ...
-
-        # Signature
-        signature_frame = ttk.Frame(form_container, style='TFrame')
-        signature_frame.pack(pady=(30, 0))
-
-        ttk.Label(signature_frame, text="Made by: DR. ESAM MEJRAB",
-                 font=('Times New Roman', 14, 'italic'), 
-                 foreground=self.primary_color).pack()
-
-    # ==============================================
-    # Existing Methods (Keep these unchanged)
-    # ==============================================
-
-    def setup_login_screen(self):
-        """Setup the login screen with modern design"""
         self.clear_frame()
         
         # Main container with gradient background
@@ -3673,236 +2576,824 @@ class OncologyApp:
         logo_frame.pack(expand=True, fill=tk.BOTH, padx=40, pady=40)
         
         # App name with modern font
-        tk.Label(logo_frame, text="OncoCare", font=('Helvetica', 36, 'bold'), 
-                bg='#3498db', fg='white').pack(pady=(40, 10))
+        tk.Label(logo_frame, text="OncoCare", font=('Helvetica', 24, 'bold'), 
+                bg='#3498db', fg='white').pack(pady=(0, 10))
         
-        tk.Label(logo_frame, text="Pediatric Oncology Patient Management System", 
+        tk.Label(logo_frame, text="User Management", 
                 font=('Helvetica', 14), bg='#3498db', fg='white').pack(pady=(0, 40))
         
-        # Right side with login form
+        # Right side with content
         right_frame = tk.Frame(main_frame, bg='white')
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
-        # Login form container
-        form_container = ttk.Frame(right_frame, bg='white')
-        form_container.place(relx=0.5, rely=0.5, anchor='center')
+        # Main content
+        main_frame = ttk.Frame(right_frame, padding="20 20 20 20", style='TFrame')
+        main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Login header
-        tk.Label(form_container, text="Login to OncoCare", font=('Helvetica', 24, 'bold'), 
-                bg='white').pack(pady=(0, 30))
+        # User list
+        list_frame = ttk.Frame(main_frame, style='TFrame')
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        # Username field
-        tk.Label(form_container, text="Username", font=('Helvetica', 12), 
-                bg='white', anchor='w').pack(fill=tk.X, pady=(10, 0))
-        self.entry_username = ttk.Entry(form_container, font=('Helvetica', 12))
-        self.entry_username.pack(fill=tk.X, ipady=5, pady=(0, 20))
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Password field
-        tk.Label(form_container, text="Password", font=('Helvetica', 12), 
-                bg='white', anchor='w').pack(fill=tk.X)
-        self.entry_password = ttk.Entry(form_container, show="*", font=('Helvetica', 12))
-        self.entry_password.pack(fill=tk.X, ipady=5, pady=(0, 30))
+        self.user_list = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, 
+                                  selectmode=tk.SINGLE, font=('Helvetica', 12),
+                                  height=10, bg='white', bd=0, highlightthickness=0)
+        self.user_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.user_list.yview)
         
-        # Login button
-        login_btn = ttk.Button(form_container, text="Login", command=self.login, 
-                             style='Blue.TButton')
-        login_btn.pack(fill=tk.X, ipady=10, pady=(0, 20))
+        for username in self.users:
+            self.user_list.insert(tk.END, f"{username} ({self.users[username]['role']})")
         
-        # Exit button
-        exit_btn = ttk.Button(form_container, text="Exit", command=self.root.quit)
-        exit_btn.pack(fill=tk.X, ipady=10)
+        # Add user form
+        form_frame = ttk.Frame(main_frame, style='TFrame')
+        form_frame.pack(fill=tk.X, pady=10)
         
-        # Focus on username field
-        self.entry_username.focus()
+        ttk.Label(form_frame, text="New Username:", 
+                 font=('Helvetica', 11)).grid(row=0, column=0, padx=5, pady=5, sticky="e")
         
-        # Bind Enter key to login
-        self.entry_password.bind('<Return>', lambda event: self.login())
+        self.new_username = ttk.Entry(form_frame, font=('Helvetica', 11))
+        self.new_username.grid(row=0, column=1, padx=5, pady=5)
+        
+        ttk.Label(form_frame, text="Password:", 
+                 font=('Helvetica', 11)).grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        
+        self.new_password = ttk.Entry(form_frame, show="*", font=('Helvetica', 11))
+        self.new_password.grid(row=1, column=1, padx=5, pady=5)
+        
+        ttk.Label(form_frame, text="Role:", 
+                 font=('Helvetica', 11)).grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        
+        self.new_role = ttk.Combobox(form_frame, values=["admin", "editor", "viewer", "pharmacist"], 
+                                    font=('Helvetica', 11))
+        self.new_role.grid(row=2, column=1, padx=5, pady=5)
+        
+        # Buttons
+        btn_frame = ttk.Frame(main_frame, style='TFrame')
+        btn_frame.pack(pady=10)
+        
+        ttk.Button(btn_frame, text="Add User", command=self.add_user, 
+                  style='Blue.TButton').pack(side=tk.LEFT, padx=5)
+        
+        # Only mej.esam can delete users
+        if self.current_user == "mej.esam":
+            ttk.Button(btn_frame, text="Delete User", command=self.delete_user,
+                      style='Red.TButton').pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(btn_frame, text="Change Password", command=self.change_user_password,
+                  style='Green.TButton').pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(btn_frame, text="Back to Menu", command=self.main_menu,
+                  style='Blue.TButton').pack(side=tk.RIGHT, padx=5)
 
-    def login(self):
-        """Handle user login"""
-        username = self.entry_username.get()
-        password = self.entry_password.get()
-
+    def add_user(self):
+        """Add a new user"""
+        username = self.new_username.get()
+        password = self.new_password.get()
+        role = self.new_role.get()
+        
+        if not all([username, password, role]):
+            messagebox.showerror("Error", "All fields are required")
+            return
+        
         if username in self.users:
-            stored_hash = self.users[username]["password"].encode('utf-8')
-            if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
-                self.current_user = username
-                self.user_label.config(text=f"User: {username} ({self.users[username]['role']})")
-                messagebox.showinfo("Login Successful", f"Welcome, {username}!")
-                self.main_menu()
+            messagebox.showerror("Error", "Username already exists")
+            return
+        
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        self.users[username] = {"password": hashed_password, "role": role}
+        self.save_users_to_file()
+        self.user_list.insert(tk.END, f"{username} ({role})")
+        self.new_username.delete(0, tk.END)
+        self.new_password.delete(0, tk.END)
+        self.new_role.set("")
+        
+        messagebox.showinfo("Success", "User added successfully")
+    
+    def delete_user(self):
+        """Delete a user"""
+        selection = self.user_list.curselection()
+        if not selection:
+            messagebox.showerror("Error", "No user selected")
+            return
+
+        selected = self.user_list.get(selection[0])
+        username = selected.split()[0]
+
+        if username == self.current_user:
+            messagebox.showerror("Error", "You cannot delete yourself.")
+            return
+
+        if username == "mej.esam":
+            messagebox.showerror("Error", "Cannot delete 'mej.esam' user.")
+            return
+
+        confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete the user '{username}'?")
+        if not confirm:
+            return
+
+        del self.users[username]
+        self.save_users_to_file()
+        self.user_list.delete(selection[0])
+        messagebox.showinfo("Success", f"User '{username}' deleted successfully.")
+
+    def change_user_password(self):
+        """Change a user's password"""
+        selection = self.user_list.curselection()
+        if not selection:
+            messagebox.showerror("Error", "No user selected")
+            return
+
+        selected = self.user_list.get(selection[0])
+        username = selected.split()[0]
+
+        if username == "mej.esam" and self.current_user != "mej.esam":
+            messagebox.showerror("Error", "Only 'mej.esam' can change their own password.")
+            return
+
+        self.clear_frame()
+
+        # Header
+        header_frame = ttk.Frame(self.root, style='TFrame')
+        header_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        ttk.Label(header_frame, text=f"Change Password for {username}", 
+                 font=('Helvetica', 18, 'bold'),
+                 foreground=self.secondary_color).pack(side=tk.LEFT)
+
+        # Form
+        form_frame = ttk.Frame(self.root, padding="20 20 20 20", style='TFrame')
+        form_frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(form_frame, text="New Password:", 
+                 font=('Helvetica', 12)).pack(pady=5)
+        
+        new_password_entry = ttk.Entry(form_frame, show="*", font=('Helvetica', 12))
+        new_password_entry.pack(pady=5)
+
+        ttk.Label(form_frame, text="Confirm New Password:", 
+                 font=('Helvetica', 12)).pack(pady=5)
+        
+        confirm_password_entry = ttk.Entry(form_frame, show="*", font=('Helvetica', 12))
+        confirm_password_entry.pack(pady=5)
+
+        # Buttons
+        btn_frame = ttk.Frame(form_frame, style='TFrame')
+        btn_frame.pack(pady=20)
+
+        def save_new_password():
+            new_password = new_password_entry.get()
+            confirm_password = confirm_password_entry.get()
+
+            if new_password != confirm_password:
+                messagebox.showerror("Error", "Passwords do not match.")
                 return
 
-        messagebox.showerror("Login Failed", "Invalid username or password.")
-        self.entry_password.delete(0, tk.END)
-
-    def clear_frame(self):
-        """Clear all widgets from the main frame except status bar"""
-        for widget in self.root.winfo_children():
-            if widget not in [self.status_frame]:
-                widget.destroy()
-
-    def on_close(self):
-        """Handle window close event"""
-        if messagebox.askyesno("Exit Confirmation", "Are you sure you want to exit?"):
-            # Cancel all pending after events
-            for after_id in self.root.tk.eval('after info').split():
-                self.root.after_cancel(after_id)
-            
-            self.executor.shutdown(wait=False)
-            self.root.destroy()
-
-    def update_datetime(self):
-        """Update the date and time display"""
-        if hasattr(self, 'datetime_label') and self.datetime_label.winfo_exists():
-            now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            self.datetime_label.config(text=now)
-            self.root.after(1000, self.update_datetime)
-
-    def check_internet_connection(self):
-        """Check internet connection status periodically"""
-        def internet_check():
-            try:
-                socket.create_connection(("www.google.com", 80), timeout=5)
-                self.internet_connected = True
-            except:
-                self.internet_connected = False
-            
-            self.update_internet_indicator()
-            self.root.after(30000, internet_check)  # Check every 30 seconds
-        
-        internet_check()
-
-    def update_internet_indicator(self):
-        """Update the internet connection indicator"""
-        color = "green" if self.internet_connected else "red"
-        self.internet_indicator.delete("all")
-        self.internet_indicator.create_oval(5, 5, 15, 15, fill=color, outline="")
-
-    def load_users(self):
-        """Load user data from file or create default users"""
-        if os.path.exists("users_data.json"):
-            try:
-                with open("users_data.json", "r") as f:
-                    self.users = json.load(f)
-            except json.JSONDecodeError:
-                self.users = self.create_default_users()
-                self.save_users_to_file()
-        else:
-            self.users = self.create_default_users()
+            hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            self.users[username]["password"] = hashed_password
             self.save_users_to_file()
+            messagebox.showinfo("Success", f"Password for {username} changed successfully!")
+            self.manage_users()
 
-    def create_default_users(self):
-        """Create default user data with hashed passwords"""
-        return {
-            "mej.esam": {
-                "password": bcrypt.hashpw("wjap19527".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
-                "role": "admin"
-            },
-            "doctor1": {
-                "password": bcrypt.hashpw("doc123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
-                "role": "editor"
-            },
-            "nurse1": {
-                "password": bcrypt.hashpw("nur123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
-                "role": "viewer"
-            },
-            "pharmacist1": {
-                "password": bcrypt.hashpw("pharm123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
-                "role": "pharmacist"
-            },
-            "seraj": {
-                "password": bcrypt.hashpw("steve8288".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
-                "role": "admin"
-            }
-        }
+        ttk.Button(btn_frame, text="Save", command=save_new_password, 
+                  style='Blue.TButton').pack(side=tk.LEFT, padx=10)
+        
+        ttk.Button(btn_frame, text="Cancel", command=self.manage_users).pack(side=tk.LEFT, padx=10)
 
-    def save_users_to_file(self):
-        """Save user data to file"""
-        with open("users_data.json", "w") as f:
-            json.dump(self.users, f, indent=4)
-
-    def load_patient_data(self):
-        """Load patient data from file or create empty list"""
-        if not os.path.exists('patients_data.json'):
-            self.patient_data = []
+    def change_password(self):
+        """Change the current user's password"""
+        if self.users[self.current_user]["role"] == "viewer":
+            messagebox.showerror("Access Denied", "Viewers cannot change passwords.")
             return
-            
+
+        self.clear_frame()
+
+        # Header
+        header_frame = ttk.Frame(self.root, style='TFrame')
+        header_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        ttk.Label(header_frame, text="Change Password", 
+                 font=('Helvetica', 18, 'bold'),
+                 foreground=self.secondary_color).pack(side=tk.LEFT)
+
+        # Form
+        form_frame = ttk.Frame(self.root, padding="20 20 20 20", style='TFrame')
+        form_frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(form_frame, text="Current Password:", 
+                 font=('Helvetica', 12)).pack(pady=5)
+        
+        current_password_entry = ttk.Entry(form_frame, show="*", font=('Helvetica', 12))
+        current_password_entry.pack(pady=5)
+
+        ttk.Label(form_frame, text="New Password:", 
+                 font=('Helvetica', 12)).pack(pady=5)
+        
+        new_password_entry = ttk.Entry(form_frame, show="*", font=('Helvetica', 12))
+        new_password_entry.pack(pady=5)
+
+        ttk.Label(form_frame, text="Confirm New Password:", 
+                 font=('Helvetica', 12)).pack(pady=5)
+        
+        confirm_password_entry = ttk.Entry(form_frame, show="*", font=('Helvetica', 12))
+        confirm_password_entry.pack(pady=5)
+
+        # Buttons
+        btn_frame = ttk.Frame(form_frame, style='TFrame')
+        btn_frame.pack(pady=20)
+
+        def save_new_password():
+            current_password = current_password_entry.get()
+            new_password = new_password_entry.get()
+            confirm_password = confirm_password_entry.get()
+
+            stored_hash = self.users[self.current_user]["password"].encode('utf-8')
+            if not bcrypt.checkpw(current_password.encode('utf-8'), stored_hash):
+                messagebox.showerror("Error", "Current password is incorrect.")
+                return
+
+            if new_password != confirm_password:
+                messagebox.showerror("Error", "New passwords do not match.")
+                return
+
+            hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            self.users[self.current_user]["password"] = hashed_password
+            self.save_users_to_file()
+            messagebox.showinfo("Success", "Password changed successfully!")
+            self.main_menu()
+
+        ttk.Button(btn_frame, text="Save", command=save_new_password, 
+                  style='Blue.TButton').pack(side=tk.LEFT, padx=10)
+        
+        ttk.Button(btn_frame, text="Cancel", command=self.main_menu).pack(side=tk.LEFT, padx=10)
+    
+    def sync_data(self):
+        """Synchronize data with Firebase and Google Drive with improved feedback"""
+        if not self.internet_connected:
+            messagebox.showerror("Error", "No internet connection available.")
+            return
+        
+        if self.sync_in_progress:
+            messagebox.showinfo("Info", "Sync already in progress.")
+            return
+        
+        confirm = messagebox.askyesno("Confirm Sync", 
+            "This will synchronize all data with Firebase and Google Drive.\n"
+            "This may take some time depending on your internet speed and amount of data.\n\n"
+            "Do you want to continue?")
+        if not confirm:
+            return
+        
+        self.sync_in_progress = True
+        self.sync_status.config(text="Syncing... Please wait")
+        self.sync_btn.config(state=tk.DISABLED)
+        
         try:
-            with open('patients_data.json', 'r') as f:
-                self.patient_data = json.load(f)
-        except json.JSONDecodeError:
-            self.patient_data = []
-
-    def save_patient_data(self):
-        """Save patient data to file"""
-        with open('patients_data.json', 'w') as f:
-            json.dump(self.patient_data, f, indent=4)
-
-    def setup_styles(self):
-        """Configure the visual styles for the application"""
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
+            # Show progress window
+            self.sync_progress_window = tk.Toplevel(self.root)
+            self.sync_progress_window.title("Synchronization Progress")
+            self.sync_progress_window.geometry("400x200")
+            
+            tk.Label(self.sync_progress_window, text="Synchronizing data...", 
+                    font=('Helvetica', 12)).pack(pady=20)
+            
+            self.sync_progress_label = tk.Label(self.sync_progress_window, text="Starting...")
+            self.sync_progress_label.pack(pady=10)
+            
+            self.sync_progress_bar = ttk.Progressbar(self.sync_progress_window, length=300, mode='indeterminate')
+            self.sync_progress_bar.pack(pady=10)
+            self.sync_progress_bar.start()
+            
+            # Close button (disabled during sync)
+            self.sync_close_btn = ttk.Button(self.sync_progress_window, text="Close", 
+                                           state=tk.DISABLED, command=self.sync_progress_window.destroy)
+            self.sync_close_btn.pack(pady=10)
+            
+            # Perform sync in background
+            def sync_task():
+                try:
+                    # Update progress
+                    self.root.after(0, lambda: self.update_sync_progress("Syncing with Firebase..."))
+                    
+                    # Sync with Firebase
+                    firebase_success = False
+                    firebase_message = "Firebase not initialized"
+                    if self.firebase.initialized:
+                        firebase_success, firebase_message = self.firebase.sync_patients(self.patient_data)
+                        
+                        # Get updated data from Firebase
+                        if firebase_success:
+                            self.root.after(0, lambda: self.update_sync_progress("Getting updated data from Firebase..."))
+                            firebase_data = self.firebase.get_all_patients()
+                            if firebase_data:
+                                self.patient_data = firebase_data
+                                # Sort patient data by file number (numeric)
+                                self.patient_data.sort(key=lambda x: int(x.get("FILE NUMBER", 0)))
+                                self.save_patient_data()
+                    
+                    # Update progress
+                    self.root.after(0, lambda: self.update_sync_progress("Syncing with Google Drive..."))
+                    
+                    # Sync with Google Drive
+                    drive_success = False
+                    drive_message = "Google Drive not initialized"
+                    if self.drive.initialized:
+                        # Upload all patient data
+                        self.root.after(0, lambda: self.update_sync_progress("Uploading patient data to Google Drive..."))
+                        for patient in self.patient_data:
+                            self.drive.upload_patient_data(patient)
+                        
+                        # Sync all patient folders
+                        total_patients = len(self.patient_data)
+                        for i, patient in enumerate(self.patient_data):
+                            file_no = patient["FILE NUMBER"]
+                            self.root.after(0, lambda: self.update_sync_progress(
+                                f"Syncing files for patient {file_no} ({i+1}/{total_patients})..."))
+                            
+                            # Create local folder if it doesn't exist
+                            local_folder = f"Patient_{file_no}"
+                            if not os.path.exists(local_folder):
+                                os.makedirs(local_folder, exist_ok=True)
+                            
+                            # Perform two-way sync
+                            success, message = self.drive.sync_patient_files(file_no)
+                            if not success:
+                                print(f"Error syncing patient {file_no}: {message}")
+                        
+                        drive_success = True
+                        drive_message = "Google Drive sync completed"
+                    
+                    # Final status
+                    self.last_sync_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                    final_message = (
+                        f"Firebase: {'Success' if firebase_success else 'Failed'} - {firebase_message}\n"
+                        f"Google Drive: {'Success' if drive_success else 'Failed'} - {drive_message}"
+                    )
+                    
+                    self.root.after(0, lambda: self.sync_complete(
+                        firebase_success and drive_success, 
+                        final_message))
+                    
+                except Exception as e:
+                    self.root.after(0, lambda: self.sync_complete(False, f"Sync failed: {str(e)}"))
+            
+            # Start sync in background
+            self.executor.submit(sync_task)
+            
+        except Exception as e:
+            self.sync_complete(False, f"Sync failed to start: {str(e)}")
+    
+    def update_sync_progress(self, message):
+        """Update the sync progress window with current status"""
+        if hasattr(self, 'sync_progress_label') and self.sync_progress_label.winfo_exists():
+            self.sync_progress_label.config(text=message)
+            self.sync_progress_window.update()
+    
+    def sync_complete(self, success, message):
+        """Handle sync completion with detailed feedback"""
+        self.sync_in_progress = False
+        self.sync_status.config(text="")
+        self.sync_btn.config(state=tk.NORMAL)
         
-        # Configure colors
-        self.primary_color = '#2c3e50'  # Dark blue
-        self.secondary_color = '#3498db'  # Blue
-        self.accent_color = '#e74c3c'  # Red
-        self.light_color = '#ecf0f1'  # Light gray
-        self.dark_color = '#2c3e50'  # Dark blue
-        self.success_color = '#27ae60'  # Green
-        self.warning_color = '#f39c12'  # Orange
-        self.danger_color = '#e74c3c'  # Red
+        if hasattr(self, 'sync_progress_window') and self.sync_progress_window.winfo_exists():
+            self.sync_progress_bar.stop()
+            self.sync_progress_label.config(text="Sync completed!")
+            self.sync_close_btn.config(state=tk.NORMAL)
         
-        # Configure styles
-        self.style.configure('TFrame', background=self.light_color)
-        self.style.configure('TButton', font=('Helvetica', 10, 'bold'), padding=8)
-        self.style.map('TButton',
-            background=[('active', self.secondary_color)],
-            foreground=[('active', 'white')]
-        )
-        
-        # Custom button styles
-        self.style.configure('Blue.TButton', background=self.secondary_color, foreground='white')
-        self.style.configure('Green.TButton', background=self.success_color, foreground='white')
-        self.style.configure('Yellow.TButton', background=self.warning_color, foreground='white')
-        self.style.configure('Brown.TButton', background='#8B4513', foreground='white')
-        self.style.configure('Red.TButton', background=self.danger_color, foreground='white')
-        self.style.configure('Purple.TButton', background='#8A2BE2', foreground='white')
-        
-        # Card style for medication displays
-        self.style.configure('Card.TFrame', background='white', borderwidth=1, relief='solid')
-
-    def setup_status_bar(self):
-        """Setup the status bar at the bottom of the window"""
-        self.status_frame = ttk.Frame(self.root, style='Status.TFrame', height=30)
-        self.status_frame.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        # User info
-        self.user_label = ttk.Label(self.status_frame, text="Not logged in", style='Status.TLabel')
-        self.user_label.pack(side=tk.LEFT, padx=10)
-        
-        # Internet status indicator
-        self.internet_indicator = tk.Canvas(self.status_frame, width=20, height=20, highlightthickness=0)
-        self.internet_indicator.pack(side=tk.LEFT, padx=5)
-        self.update_internet_indicator()
-        
-        # Sync status
-        self.sync_status = ttk.Label(self.status_frame, text="", style='Status.TLabel')
-        self.sync_status.pack(side=tk.LEFT, padx=10)
-        
-        # Date and time
-        self.datetime_label = ttk.Label(self.status_frame, text="", style='Status.TLabel')
-        self.datetime_label.pack(side=tk.RIGHT, padx=10)
-        
-        # Sync button
-        self.sync_btn = ttk.Button(self.status_frame, text="Synchronize Data", 
-                                  command=self.sync_data, style='Blue.TButton')
-        self.sync_btn.pack(side=tk.RIGHT, padx=10)
-        
-        # Update datetime
-        self.update_datetime()
+        if success:
+            messagebox.showinfo("Sync Complete", message)
+        else:
+            messagebox.showerror("Sync Failed", message)
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = OncologyApp(root)
     root.mainloop()
+
+ide like to get these improvments to my code
+
+Key Areas for Improvement:
+
+1. **Error Handling & Robustness**:
+   - Add more comprehensive error handling throughout the application
+   - Implement transaction-like behavior for critical operations (patient saves, deletes)
+   - Add input validation beyond just mandatory field checks
+
+2. **Performance**:
+   - Implement lazy loading for large datasets (especially in view_all_patients)
+   - Add pagination for patient lists
+   - Optimize Google Drive/Firebase sync operations
+
+3. **Security**:
+   - Implement session timeouts
+   - Add audit logging for sensitive operations
+   - Encrypt sensitive patient data at rest
+   - Implement proper role-based access control checks throughout
+4. **UI/UX**:
+   - Implement a proper loading indicator during long operations
+   - Add keyboard shortcuts for common actions
+   - Improve form navigation (tab order, field focus)
+   - Add form validation feedback as-you-type
+
+5. **Technical Improvements**:
+   - Implement proper dependency injection
+   - Add unit/integration tests
+   - Separate concerns better (move business logic out of UI)
+   - Implement proper data access layer
+
+5. **Add and edit**:
+> I want drop lists to be coded to be editable by mej.esam can add and delete values 
+>Add a button in home screen named F&N documentation, its function when clicked is to request from the user to enter the path on the users computer of an applications exe file to run , and that bath is saved and can not be edited by any user except mej.esam
+>Add a setting button in the home screen viewed only to mej.esam , no any other user can access it , its function is to make edits to a lot of software functions like drop lists to add and delete and edit its input values , change the bath of app that gets runed by clicking F&N documentation button , delete all local patients records folders and files
+
+>Clinical Workflow improvments
+        - Add treatment timeline visualization
+       - Implement proper patient status tracking
+       - Add medication management with dosage calculations ,bsa calculator,what medications he recived   and what he is currently on
+Here's how to implement medication management with BSA calculation and dosage features in my oncology application:
+1. BSA Calculator Integration
+Where to Add:
+•	Add a "Calculate BSA" button in:
+o	Patient overview screen
+o	Medication management screen
+o	Chemotherapy protocol screens
+How it Works:
+1.	Input Fields:
+o	Height (cm)
+o	Weight (kg)
+o	Formula selection (Mosteller/DuBois/Haycock)
+2.	Calculation:
+o	Mosteller formula: √(height × weight / 3600)
+o	DuBois formula: 0.007184 × height^0.725 × weight^0.425
+o	Haycock formula: 0.024265 × height^0.3964 × weight^0.5378
+3.	Features:
+o	Save BSA to patient record
+o	Auto-fill in medication dosage calculations
+o	Display historical BSA trends
+2. Medication Management System
+Where to Add:
+•	Dedicated tab in patient record
+•	Quick access from chemotherapy protocols
+Key Components:
+1.	Current Medications:
+o	List of active medications
+o	Dosage, frequency, route, start date
+o	Discontinue button
+2.	Medication History:
+o	Complete treatment history
+o	Filter by date/type
+o	Reinstate previous medications
+3.	Add New Medication:
+o	Searchable medication database
+o	Auto-calculated doses based on BSA
+o	Protocol-specific default values
+3. Dosage Calculation System
+Implementation:
+1.	Protocol-Based Calculations:
+o	Store standard protocols with medication parameters
+o	Calculate doses using: Dose = BSA × Protocol Dose/m²
+2.	Custom Calculations:
+o	Manual override option
+o	Round to nearest vial size
+o	Adjust for renal/hepatic function
+3.	Safety Checks:
+o	Maximum dose warnings
+o	Cumulative dose tracking
+o	Drug interaction alerts
+4. Medication Tracking
+Features:
+1.	Current Medications:
+o	Visual indicators for critical meds
+o	Next due date tracking
+o	Administration history
+2.	Historical View:
+o	Timeline visualization
+o	Response/efficacy markers
+o	Toxicity documentation
+3.	Reporting:
+o	Medication summary for handoffs
+o	Protocol compliance reports
+o	Cumulative dose reports
+5. Workflow Integration
+Clinical Use Cases:
+1.	New Chemotherapy:
+o	Select protocol → auto-populate medications
+o	Calculate doses → provider verification
+o	Generate administration instructions
+2.	Dose Adjustments:
+o	Modify based on toxicity
+o	Track changes over time
+o	Document rationale
+3.	Transition Points:
+o	Induction → Consolidation
+o	Outpatient → Inpatient
+o	Treatment phases
+4.	- lab investigations that needs documentation: wbc count , hb , plt , hct , neutro count , lympho count , urea , creatinine. na , k , cl , ca , mg ,ph , uric acid ,ldf , ferritin, pt aptt , inr, viral screen , fibrinogen, d.diamer ,gpt , got , alk ph, t.b ,d.b , blood gases 
+        -also documentation of echocardiogram EF
+
+Comprehensive Lab Investigations System for Pediatric Oncology
+1. Core Components to Track
+Track these critical lab categories with pediatric-specific reference ranges:
+•	Blood Counts: WBC, Hemoglobin, Platelets, Neutrophils (ANC), Lymphocytes
+•	Kidney Function: Urea, Creatinine, Electrolytes (Na/K/Cl), Calcium, Magnesium
+•	Liver Function: AST, ALT, Bilirubin (Total/Direct), ALP
+•	Coagulation: PT, APTT, INR, Fibrinogen, D-Dimer
+•	Special Tests: LDH (tumor burden), Ferritin (iron overload), Blood Gases, Viral PCRs
+•	Cardiac: Echocardiogram EF% (for anthracycline monitoring)
+2. Key Features to Implement
+A. Smart Lab Entry
+•	Auto-complete test names with common pediatric oncology panels (e.g., "Pre-Chemo Labs")
+•	Age-adjusted normal ranges (a 2-year-old's normal Hb differs from a teen's)
+•	Visual flags for abnormal values (🟡 Mild, 🟠 Moderate, 🔴 Critical)
+•	Protocol context (e.g., "Day 8 of Delayed Intensification")
+B. Trend Visualization
+•	Sparkline graphs showing:
+o	Blood count recovery after chemotherapy
+o	Kidney/liver trends during nephrotoxic/hepatotoxic drugs
+o	Tumor markers (e.g., LDH for lymphoma)
+•	Nadir tracking: Auto-detect and flag lowest blood counts post-chemo
+C. Toxicity Monitoring
+•	CTCAE Grading (standard oncology toxicity scale):
+o	Example: Grade 4 Neutropenia = ANC <500 cells/μL
+•	Protocol-specific alerts:
+o	"Hold methotrexate if Cr >1.5× baseline"
+o	"Febrile neutropenia risk: ANC <1000 with fever"
+D. Treatment Decision Support
+•	Chemotherapy clearance checklists:
+o	"ANC >750? According to protocol guidelines ✓, Platelets >75k? According to protocol guidelines ✓, Bilirubin <2.0? ✗ → Delay"
+•	Transfusion triggers:
+o	"Hb <8.5 g/dL → Consider PRBC transfusion"
+o	"Platelets <20k → Prophylactic transfusion"
+3. Workflow Integration
+For Clinicians:
+1.	Pre-Chemo Workflow:
+o	System displays required labs (e.g., creatinine before cisplatin)
+o	Flags unresolved critical values before approving chemo
+2.	During Treatment:
+o	Tracks expected nadirs (e.g., "Platelets will likely drop Day 7-14")
+o	Alerts if labs are overdue
+3.	Long-Term Monitoring:
+o	Tracks cumulative doses (e.g., "Doxorubicin: 250/300 mg/m² max")
+o	Schedules survivorship labs (e.g., annual echocardiograms)
+For Nurses/Parents:
+•	Simplified views with color-coded results
+•	Explanatory notes: "Low neutrophils → infection risk"
+•	Home monitoring guides: "When to call for fever"
+4. Pediatric-Specific Considerations
+•	Age-based norms: Newborn vs. adolescent lab values
+•	Growth tracking: Plots labs alongside height/weight percentiles
+•	Family-friendly reports: Minimal jargon, visual trends
+5. Safety & Compliance
+•	Hard stops for life-threatening values (K⁺ >6.5 mEq/L)
+•	Audit trails: Who entered/verified each result
+•	Protocol adherence reports: "% of required labs completed"
+6. Advanced Features (Optional)
+•	LIS Integration: Auto-import results from hospital lab systems
+•	Predictive analytics: "Expected ANC recovery in 2 days"
+•	Mobile alerts: Push notifications for critical values
+
+       - Include lab result tracking and trending
+       
+      -next appointments and next protocols schedule 
+Make sure that important new First of all I want u to **Add and edit**: > I want drop lists to be coded to be editable by mej.esam can add and delete values >add a calculators button  >Add a button in home screen named F&N documentation, its function when clicked is to request from the user to enter the path on the users computer of an applications exe file to run , and that bath is saved and can not be edited by any user except mej.esam >Add a button in the home screen viewed only to mej.esam to configure system settings, no any other user can access it , its function is to make edits to a lot of software functions like drop lists to add and delete and edit its input values , change the bath of app that gets runed by clicking F&N documentation button , delete all local patients records folders and files
+
+
+1.	Security & User Privileges System Current Issues:
+Privilege checks are inconsistent
+No proper audit logging
+Password security can be improved
+Improvements Needed:
+A. Enhanced User Roles & Privileges
+>Super Admin (mej.esam) Exclusive Privileges:
+Full user management (add/edit/delete any user)
+Delete single or all patient records permanently
+Edit all dropdown lists (malignancies, symptoms, etc.)
+Configure system settings (make edits to a lot of software functions like drop lists to add and delete and edit its input values , change the bath of app that gets runed by clicking F&N documentation button , delete all local patients records folders and files…etc)
+Override any clinical warnings/protocols
+Edit medication doses
+Edit medication maximum doses
+Restore from any backup
+Export raw statistical data and figures
+>Admin Users:
+Add/edit patients (no deletion)
+Manual data sync
+Export data/backups can not restore
+View/export statistics
+Cannot modify protocols or doses
+>Editors:
+Add/edit patients
+Generate reports
+View statistics (no export)
+Manual data sync
+Access chemo protocols
+can change their user password
+Cannot modify system configurations
+>Pharmacists:
+Medication management , edit and change drugs dose and max doses
+Dosage calculations 
+Chemo stock management
+Cannot modify patient demographics cant add, edit or delete
+Cant view statistics
+Can change their user passwords
+>Viewers (Nurses):
+Read-only access cant view statistics, chemo sheets or stocks
+No export/print capabilities
+Cannot change passwords
+Cant calculate
+Only can access search patients and chemo protocols 
+
+Implementation Approach:
+Create a privilege matrix JSON file defining exact permissions
+Implement decorator pattern for privilege checks
+Store last-modified-by info for all sensitive operations
+Password policy: 12+ chars, special chars, 90-day expiration
+B. Audit Logging
+Log all privileged actions (user, timestamp, action)
+Store logs both locally and in Firebase
+Make logs viewable only by super admin
+2.	Clinical Workflow Enhancements A. Medication Management System
+
+BSA Calculator:
+Multiple formula support (Mosteller/DuBois)
+IV fluid rate calculator (used after calculating body surface area)
+4000ml per BSA (-drug dilution if needed)
+3000ml per BSA (-drug dilution if needed)
+2000ml per BSA (-drug dilution if needed)
+400ml per BSA (-drug dilution if needed)
+Full maintenance (+deficit if needed) (-drug dilution if needed) and half maintenance (-drug dilution if needed)
+
+Auto-save to patient record
+Historical trend visualization
+Dosage Management:
+Protocol-based auto-calculation for all pediatric chemotherapies with special consideration for patients weight under 10 kg
+Renal/hepatic dose adjustments
+Cumulative dose tracking
+Interactive dose rounding (nearest vial size)
+Medication Timeline:
+Visual treatment phases
+Toxicity markers
+Administration history
+B. Lab Tracking System
+Core Features:
+Age-adjusted reference ranges
+CTCAE toxicity grading
+Nadir prediction
+Transfusion triggers
+Workflow Integration:
+Pre-chemo clearance checklists
+Critical value alerts
+Protocol-specific requirements
+Trend Visualization:
+Sparkline graphs for key parameters
+Exportable trend reports
+Protocol phase correlation
+C. Treatment Scheduling
+Protocol Management:
+Phase-based templates
+Auto-generated calendars
+Milestone tracking
+Appointment System:
+Integrated with treatment phases
+Reminder system
+Conflict checking
+
+D. Chemotherapy extravasation managements
+3.	Data Management Improvements 
+A. Backup & Sync
+Enhanced Sync Logic:
+Conflict resolution protocols
+Differential sync
+Offline mode support
+Backup Types:
+Full system backups
+Patient-specific snapshots
+Automated nightly backups
+B. Data Validation
+Input Validation:
+Field-level validation rules
+Cross-field validation (e.g., age vs diagnosis date)
+Protocol-specific requirements
+Clinical Safety Checks:
+Dose-range validation
+Drug-drug interaction alerts
+Cumulative dose warnings massage
+4.	UI/UX Improvements A. Navigation & Workflow
+Keyboard Shortcuts:
+F2: New patient
+Ctrl+F: Search
+Alt+S: Save
+Form Improvements:
+Smart tab ordering
+Auto-focus critical fields
+Inline validation messages
+B. Visual Design
+Clinical Status Indicators:
+Color-coded treatment phases
+Toxicity severity badges
+Protocol compliance markers
+Information Hierarchy:
+Priority-based layout
+Clinical decision support prominence
+Progressive disclosure
+C. Performance Optimizations
+Lazy Loading:
+Paginated patient lists
+On-demand image loading
+Background data prefetching
+Memory Management:
+Clean up unused resources
+Optimized image handling
+Efficient data structures
+5.	Technical Architecture A. Code Organization
+Separation of Concerns:
+Business logic layer
+Data access layer
+Presentation layer
+Dependency Injection:
+Configurable service providers
+Mockable interfaces for testing
+B. Testing Strategy
+Unit Tests:
+Core calculations
+Validation logic
+Privilege checks
+Integration Tests:
+Firebase sync
+Google Drive operations
+Clinical workflows
+C. Error Handling
+Recovery Protocols:
+Transaction rollbacks
+Auto-reconnect for cloud services
+Graceful degradation
+6.	Statistics & Reporting A. Enhanced Analytics
+Clinical Metrics:
+Protocol compliance rates
+Toxicity profiles
+Survival analysis
+Operational Metrics:
+Patient volume trends
+Resource utilization
+Follow-up rates
+B. Visualization Tools
+Interactive Charts:
+Filterable by time/protocol
+Export as PNG/PDF
+Protocol benchmarking
+Custom Reports:
+Protocol-specific templates
+Survivorship reports
+Quality metrics
+7.	Configuration System A. Super Admin Controls
+Dynamic Dropdown Management:
+Add/remove malignancy types
+Edit symptom lists
+Configure risk groups
+System Settings:
+EXE path configuration
+Backup locations
+Default protocols
+B. Clinical Configuration
+Protocol Management:
+Dose limits
+Required labs
+Phase definitions
+Alert Thresholds:
+Critical lab values
+Dose modification rules
+Follow-up intervals
+Implementation Roadmap Phase 1: Security & Core Architecture
+Implement privilege matrix system
+Build audit logging framework
+Set up dependency injection
+Phase 2: Clinical Workflows
+Develop medication management
+Implement lab tracking
+Build treatment scheduler
+Phase 3: UI/UX Overhaul
+Redesign navigation
+Add clinical status indicators
+Optimize form workflows
+Phase 4: Data & Analytics
+Enhance statistics module
+Build reporting engine
+Implement advanced visualizations
+Phase 5: Deployment & Monitoring
+Performance benchmarking
+User training materials
+Usage analytics
+Key Considerations Clinical Safety:
+All clinical calculations require dual verification
+Maintain complete audit trails
+Never allow silent overrides
+Data Integrity:
+Cryptographic hashing for sensitive data
+Write-once audit logs
+Regular consistency checks
+Regulatory Compliance:
+HIPAA/GDPR considerations
+21 CFR Part 11 for electronic records
+Data retention policies
+
+edit them all and send me full edited well functioning code 
