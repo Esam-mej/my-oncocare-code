@@ -1122,183 +1122,172 @@ class OncologyApp:
         self.entry_password.delete(0, tk.END)
     
     def main_menu(self):
-        """Display the main menu with rearranged buttons"""
+        """Display the modern main menu with improved visual design"""
         self.clear_frame()
 
-        # Main container with gradient background
-        main_frame = tk.Frame(self.root, bg='white')
-        main_frame.pack(expand=True, fill=tk.BOTH)
+        # Main container using grid for better layout control
+        main_container = ttk.Frame(self.root, style='TFrame')
+        main_container.pack(fill=tk.BOTH, expand=True)
 
-        # Left side with logo and app name
-        left_frame = tk.Frame(main_frame, bg='#3498db')
-        left_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+        # Left sidebar with improved design
+        sidebar = ttk.Frame(main_container, style='Dark.TFrame', width=280)
+        sidebar.pack(side=tk.LEFT, fill=tk.Y)
+        sidebar.pack_propagate(False)
 
-        # App logo and name
-        logo_frame = tk.Frame(left_frame, bg='#3498db')
-        logo_frame.pack(expand=True, fill=tk.BOTH, padx=40, pady=40)
+        # Logo and user info section
+        logo_frame = ttk.Frame(sidebar, style='Dark.TFrame')
+        logo_frame.pack(pady=40, padx=20, fill=tk.X)
 
-        # App name with modern font
-        tk.Label(logo_frame, text=f"Welcome, {self.current_user}", font=('Helvetica', 16, 'bold'),
-                 bg='#3498db', fg='white').pack(pady=(0, 10))
+        # Modern logo layout
+        ttk.Label(logo_frame, text="🩺 OncoCare", style='Logo.TLabel').pack(pady=(0, 10))
+        ttk.Label(logo_frame, text="Pediatric Oncology Management", 
+                 style='SubLogo.TLabel').pack(pady=(0, 30))
+        
+        # User info panel
+        user_frame = ttk.Frame(sidebar, style='Dark.TFrame')
+        user_frame.pack(padx=20, fill=tk.X)
+        ttk.Label(user_frame, text=f"Logged in as:", style='User Info.TLabel').pack(anchor='w')
+        ttk.Label(user_frame, text=self.current_user.upper(), 
+                 style='Username.TLabel').pack(anchor='w')
+        ttk.Label(user_frame, text=f"Role: {self.users[self.current_user]['role'].title()}",
+                 style='Role.TLabel').pack(anchor='w', pady=(0, 20))
 
-        tk.Label(logo_frame, text="OncoCare", font=('Helvetica', 24, 'bold'),
-                 bg='#3498db', fg='white').pack(pady=(0, 10))
+        # Quick action buttons in sidebar
+        quick_actions = ttk.Frame(sidebar, style='Dark.TFrame')
+        quick_actions.pack(padx=20, fill=tk.X)
+        ttk.Button(quick_actions, text="🔄 Sync Data", command=self.sync_data,
+                  style='Sidebar.TButton').pack(fill=tk.X, pady=3)
+        ttk.Button(quick_actions, text="❓ Quick Help", command=self.show_help,
+                  style='Sidebar.TButton').pack(fill=tk.X, pady=3)
 
-        tk.Label(logo_frame, text="Main Menu",
-                 font=('Helvetica', 14), bg='#3498db', fg='white').pack(pady=(0, 40))
+        # Main content area
+        content = ttk.Frame(main_container, style='TFrame')
+        content.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        # Right side with menu buttons
-        right_frame = tk.Frame(main_frame, bg='white')
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        # Main button grid using notebook-style navigation
+        button_grid = ttk.Frame(content, style='TFrame')
+        button_grid.pack(padx=40, pady=40, fill=tk.BOTH, expand=True)
 
-        # Menu form container
-        form_container = tk.Frame(right_frame, bg='white')
-        form_container.place(relx=0.5, rely=0.5, anchor='center')
-
-        # Button grid container
-        btn_frame = ttk.Frame(form_container, style='TFrame')
-        btn_frame.pack(fill=tk.BOTH, expand=True, pady=20)
-
-        # Row 1 - Patient Management (Blue buttons)
-        new_row1_frame = ttk.Frame(btn_frame, style='TFrame')
-        new_row1_frame.pack(fill=tk.X, pady=5)
-
-        if self.users[self.current_user]["role"] in ["admin", "editor"]:
-            ttk.Button(new_row1_frame, text="Add New Patient", command=self.add_patient,
-                       style='Blue.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            ttk.Frame(new_row1_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5) # Placeholder
-
-        ttk.Button(new_row1_frame, text="Search Patient", command=self.search_patient,
-                   style='Blue.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
+        # Section 1: Patient Management
+        patient_frame = ttk.LabelFrame(button_grid, text="PATIENT MANAGEMENT", 
+                                      style='Section.TLabelframe')
+        patient_frame.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
+        
+        btn1 = ttk.Button(patient_frame, text="➕ New Patient", command=self.add_patient,
+                         style='Accent.TButton')
+        btn1.pack(fill=tk.X, pady=2)
+        
+        btn2 = ttk.Button(patient_frame, text="🔍 Search Patients", command=self.search_patient,
+                         style='Accent.TButton')
+        btn2.pack(fill=tk.X, pady=2)
+        
         if self.users[self.current_user]["role"] == "admin":
-            ttk.Button(new_row1_frame, text="View All Patients", command=self.view_all_patients,
-                       style='Blue.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            ttk.Frame(new_row1_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5) # Placeholder
+            btn3 = ttk.Button(patient_frame, text="📋 All Patients", command=self.view_all_patients,
+                             style='Accent.TButton')
+            btn3.pack(fill=tk.X, pady=2)
 
-        if self.users[self.current_user]["role"] in ["admin", "editor", "pharmacist"]:
-            ttk.Button(new_row1_frame, text="Lab & EF Documentation", 
-                      command=self.show_lab_ef_window,
-                      style='Green.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            ttk.Frame(new_row1_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5) # Placeholder
+    # Section 2: Clinical Tools
+        clinical_frame = ttk.LabelFrame(button_grid, text="CLINICAL TOOLS", 
+                                       style='Section.TLabelframe')
+        clinical_frame.grid(row=0, column=1, sticky='nsew', padx=5, pady=5)
 
-        # Row 2 - Data Operations (Green buttons)
-        new_row2_frame = ttk.Frame(btn_frame, style='TFrame')
-        new_row2_frame.pack(fill=tk.X, pady=5)
-
-        if self.users[self.current_user]["role"] == "admin":
-            ttk.Button(new_row2_frame, text="Export All Data", command=self.export_all_data,
-                       style='Green.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-            ttk.Button(new_row2_frame, text="Backup Data", command=self.backup_data,
-                       style='Green.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-            # Specific user check for Restore Data remains
-            if self.current_user == "mej.esam":
-                 ttk.Button(new_row2_frame, text="Restore Data", command=self.restore_data,
-                           style='Green.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-            else:
-                 # Placeholder if admin but not mej.esam
-                 ttk.Frame(new_row2_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-             # Placeholders if not admin (need 3 placeholders if admin has 3 buttons)
-             ttk.Frame(new_row2_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-             ttk.Frame(new_row2_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-             ttk.Frame(new_row2_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-
-        # Row 3 - Chemo Tools (Yellow buttons)
-        new_row3_frame = ttk.Frame(btn_frame, style='TFrame')
-        new_row3_frame.pack(fill=tk.X, pady=5)
-
-        ttk.Button(new_row3_frame, text="CHEMO PROTOCOLS", command=self.show_chemo_protocols,
-                   style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-        ttk.Button(new_row3_frame, text="CHEMO SHEETS", command=self.show_chemo_sheets,
-                   style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
+        ttk.Button(clinical_frame, text="📈 Lab & EF Docs", command=self.show_lab_ef_window,
+                  style='Clinical.TButton').pack(fill=tk.X, pady=2)
+        ttk.Button(clinical_frame, text="🧮 Calculators", command=self.show_calculators,
+                  style='Clinical.TButton').pack(fill=tk.X, pady=2)
+        ttk.Button(clinical_frame, text="⚠️ Extravasation", command=self.show_extravasation_management,
+                  style='Clinical.TButton').pack(fill=tk.X, pady=2)
+        ttk.Button(clinical_frame, text="📄 F&N Documentation", command=self.handle_fn_documentation,
+                  style='Clinical.TButton').pack(fill=tk.X, pady=2)
+    
+        # Section 3: Chemotherapy
+        chemo_frame = ttk.LabelFrame(button_grid, text="CHEMOTHERAPY", 
+                                    style='Section.TLabelframe')
+        chemo_frame.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
+        
+        ttk.Button(chemo_frame, text="📚 Protocols", command=self.show_chemo_protocols,
+                  style='Chemo.TButton').pack(fill=tk.X, pady=2)
+        ttk.Button(chemo_frame, text="📝 Sheets", command=self.show_chemo_sheets,
+                  style='Chemo.TButton').pack(fill=tk.X, pady=2)
         if self.users[self.current_user]["role"] in ["admin", "pharmacist"]:
-            ttk.Button(new_row3_frame, text="CHEMO STOCKS", command=self.show_chemo_stocks,
-                       style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            ttk.Frame(new_row3_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5) # Placeholder
+            ttk.Button(chemo_frame, text="💊 Stocks", command=self.show_chemo_stocks,
+                      style='Chemo.TButton').pack(fill=tk.X, pady=2)
 
+        # Section 4: Data Management
+        data_frame = ttk.LabelFrame(button_grid, text="DATA MANAGEMENT", 
+                                   style='Section.TLabelframe')
+        data_frame.grid(row=1, column=1, sticky='nsew', padx=5, pady=5)
+        
+        ttk.Button(data_frame, text="📤 Export Data", command=self.export_all_data,
+                  style='Data.TButton').pack(fill=tk.X, pady=2)
+        ttk.Button(data_frame, text="💾 Backup", command=self.backup_data,
+                  style='Data.TButton').pack(fill=tk.X, pady=2)
+        if self.current_user == "mej.esam":
+            ttk.Button(data_frame, text="🔄 Restore", command=self.restore_data,
+                      style='Data.TButton').pack(fill=tk.X, pady=2)
 
-        # Row 4 - Statistics (Yellow button)
-        new_row4_frame = ttk.Frame(btn_frame, style='TFrame')
-        new_row4_frame.pack(fill=tk.X, pady=5)
+        # Section 5: Administration
+        admin_frame = ttk.LabelFrame(button_grid, text="ADMINISTRATION", 
+                                    style='Section.TLabelframe')
+        admin_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+        
+        if self.users[self.current_user]["role"] == "admin" or self.current_user == "mej.esam":
+            ttk.Button(admin_frame, text="👥 Manage Users", command=self.manage_users,
+                      style='Admin.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+            ttk.Button(admin_frame, text="🔑 Change Password", command=self.change_password,
+                      style='Admin.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        ttk.Button(admin_frame, text="🚪 Logout", command=self.setup_login_screen,
+                  style='Logout.TButton').pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=2)
 
-        if self.users[self.current_user]["role"] in ["admin", "editor"]:
-            # Pack the single button to expand and fill
-            ttk.Button(new_row4_frame, text="Statistics", command=self.show_statistics,
-                       style='Yellow.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            # If the only button isn't shown, add a placeholder to maintain row height/spacing
-             ttk.Frame(new_row4_frame, height=1).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5) # Minimal placeholder
+        # Configure grid weights
+        button_grid.columnconfigure(0, weight=1)
+        button_grid.columnconfigure(1, weight=1)
+        button_grid.rowconfigure(0, weight=1)
+        button_grid.rowconfigure(1, weight=1)
+        button_grid.rowconfigure(2, weight=0)
 
+        # Add version info
+        version_frame = ttk.Frame(content, style='TFrame')
+        version_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        ttk.Label(version_frame, text="v2.0 | Developed by Dr. Esam Mejrab", 
+                 style='Version.TLabel').pack(pady=10)
 
-        # Row 5 - Calculations (Purple button)
-        new_row5_frame = ttk.Frame(btn_frame, style='TFrame')
-        new_row5_frame.pack(fill=tk.X, pady=5)
-
-        ttk.Button(new_row5_frame, text="Medical Calculators", command=self.show_calculators,
-                   style='Purple.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-
-        # Row 6 - Extravasation (Orange button)
-        new_row6_frame = ttk.Frame(btn_frame, style='TFrame')
-        new_row6_frame.pack(fill=tk.X, pady=5)
-
-        ttk.Button(new_row6_frame, text="Extravasation Management", command=self.show_extravasation_management,
-                   style='Orange.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-
-        # Row 7 - F&N Documentation (Purple button)
-        new_row7_frame = ttk.Frame(btn_frame, style='TFrame')
-        new_row7_frame.pack(fill=tk.X, pady=5)
-
-        ttk.Button(new_row7_frame, text="F&N Documentation", command=self.handle_fn_documentation,
-                   style='Purple.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-
-        # Row 8 - User Management (Brown buttons)
-        new_row8_frame = ttk.Frame(btn_frame, style='TFrame')
-        new_row8_frame.pack(fill=tk.X, pady=5)
-
-        # Check if user is admin OR the specific user 'mej.esam' for Manage Users/Change Password
-        can_manage_users = self.users[self.current_user]["role"] == "admin" or self.current_user == "mej.esam"
-
-        if can_manage_users:
-            ttk.Button(new_row8_frame, text="Manage Users", command=self.manage_users,
-                       style='Brown.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-            ttk.Button(new_row8_frame, text="Change Password", command=self.change_password,
-                       style='Brown.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-        else:
-            # Add two placeholders if user cannot manage users to maintain layout consistency
-            ttk.Frame(new_row8_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-            ttk.Frame(new_row8_frame, width=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-
-        # Row 9 - Logout (Red button)
-        new_row9_frame = ttk.Frame(btn_frame, style='TFrame')
-        # Add extra padding before the logout button as in the original idea
-        new_row9_frame.pack(fill=tk.X, pady=(20, 5))
-
-        ttk.Button(new_row9_frame, text="Logout", command=self.setup_login_screen,
-                   style='Red.TButton').pack(fill=tk.X, ipady=10) # Use original packing for logout
-
-        # Signature
-        signature_frame = ttk.Frame(form_container, style='TFrame')
-        signature_frame.pack(pady=(30, 0)) # Keep padding relative to the last element (Logout row)
-
-        # Make sure signature label background matches the frame it's in
-        ttk.Label(signature_frame, text="Made by: DR. ESAM MEJRAB",
-                  font=('Times New Roman', 14, 'italic'),
-                  foreground=self.primary_color, background='white').pack() # Specify background
-            
+        # Add new style configurations
+        self.style.configure('Dark.TFrame', background='#2a3b4c')
+        self.style.configure('Logo.TLabel', font=('Helvetica', 20, 'bold'), 
+                            foreground='#ffffff', background='#2a3b4c')
+        self.style.configure('SubLogo.TLabel', font=('Helvetica', 10), 
+                            foreground='#bdc3c7', background='#2a3b4c')
+        self.style.configure('User Info.TLabel', font=('Helvetica', 9), 
+                            foreground='#95a5a6', background='#2a3b4c')
+        self.style.configure('Username.TLabel', font=('Helvetica', 12, 'bold'), 
+                            foreground='#ecf0f1', background='#2a3b4c')
+        self.style.configure('Role.TLabel', font=('Helvetica', 9), 
+                            foreground='#7f8c8d', background='#2a3b4c')
+        self.style.configure('Section.TLabelframe', font=('Helvetica', 10, 'bold'), 
+                            borderwidth=2, relief='solid', labelmargins=10)
+        self.style.configure('Section.TLabelframe.Label', foreground='#2c3e50')
+        self.style.map('Accent.TButton',
+            background=[('active', '#3498db'), ('!active', '#2980b9')],
+            foreground=[('active', 'white'), ('!active', 'white')]
+        )
+        self.style.configure('Accent.TButton', font=('Helvetica', 10), 
+                            background='#2980b9', foreground='white', padding=8)
+        self.style.configure('Clinical.TButton', background='#27ae60', 
+                            foreground='white', padding=8)
+        self.style.configure('Chemo.TButton', background='#f39c12', 
+                            foreground='white', padding=8)
+        self.style.configure('Data.TButton', background='#8e44ad', 
+                            foreground='white', padding=8)
+        self.style.configure('Admin.TButton', background='#34495e', 
+                            foreground='white', padding=8)
+        self.style.configure('Logout.TButton', background='#e74c3c', 
+                            foreground='white', padding=8)
+        self.style.configure('Sidebar.TButton', font=('Helvetica', 10), 
+                            background='#34495e', foreground='white', padding=6)
+        self.style.configure('Version.TLabel', font=('Helvetica', 8), 
+                            foreground='#7f8c8d', background=self.light_color)
+                    
     def show_chemo_protocols(self):
         """Open the Protocols folder"""
         try:
@@ -3272,6 +3261,65 @@ class OncologyApp:
         except KeyError:
             messagebox.showerror("Error", "Please select valid age group for all medications")
 
+    def get_incompatibility_reason(self, drug, substance):
+        """Get detailed reason for incompatibility based on drug properties"""
+        reasons = {
+            # Solution-based incompatibilities
+            "Dextrose >5%": "High dextrose concentrations alter pH balance, affecting drug stability",
+            "Calcium-containing solutions": "Risk of precipitation (especially with ceftriaxone in neonates)",
+            "Divalent cation solutions": "Cations (Ca²⁺, Mg²⁺, Zn²⁺) chelate drug reducing bioavailability",
+            "TPN": "Complex parenteral nutrition formulations cause physical instability",
+            "Saline solutions": "Osmolarity mismatch leads to precipitation (particularly Amphotericin B)",
+            "Aluminum-containing solutions": "Aluminum binds drug molecules forming insoluble complexes",
+            "Alkaline solutions": "High pH causes drug degradation through hydrolysis",
+            
+            # Drug class incompatibilities
+            "Aminoglycosides": "Physical precipitation when mixed + synergistic nephrotoxicity risk",
+            "Beta-lactams": "Shared beta-lactam structure increases cross-reactivity risk",
+            "Penicillins": "Chemical degradation through nucleophilic reactions",
+            "Cephalosporins": "Structural similarity leads to competitive inhibition",
+            "Other antifungals": "Therapeutic antagonism of fungal coverage",
+            "Vancomycin": "Physical incompatibility when co-infused + additive nephrotoxicity",
+            
+            # Specific drug incompatibilities
+            "Heparin": "Polyanionic nature causes complex precipitation",
+            "Loop diuretics": "Synergistic ototoxicity risk (e.g., with aminoglycosides)",
+            "NSAIDs": "Additive nephrotoxicity through prostaglandin inhibition",
+            "Probenecid": "Competitive renal tubular secretion blockade",
+            "Warfarin": "Enhanced anticoagulation through protein binding displacement",
+            "Phenytoin": "Hepatic enzyme induction alters metabolism",
+            
+            # Special cases
+            "Calcium": "Ceftriaxone-calcium precipitates in biliary/urinary tract (neonates)",
+            "Aminoglycosides (extended)": "Inactivation through pH changes when mixed in same line",
+            "Vancomycin (extended)": "Nephrotoxicity potentiation through glomerular injury",
+            "Cisplatin": "Additive renal tubular toxicity",
+            "Methotrexate": "Competitive renal excretion increases toxicity",
+            
+            # Pharmacodynamic interactions
+            "Neuromuscular blockers": "Enhanced paralysis through presynaptic calcium effects",
+            "Statins": "Shared myotoxicity pathways increase rhabdomyolysis risk",
+            "QT-prolonging agents": "Additive cardiac repolarization delay",
+            
+            # Pharmacokinetic interactions
+            "Rifampin": "Hepatic enzyme induction accelerates drug metabolism",
+            "Azoles": "CYP450 inhibition alters drug clearance",
+            "Proton Pump Inhibitors": "Gastric pH changes reduce oral bioavailability"
+        }
+        
+        # Try for exact match first
+        if substance in reasons:
+            return reasons[substance]
+        
+        # Partial matches for drug classes
+        if "beta-lactam" in substance.lower():
+            return reasons["Beta-lactams"]
+        if "aminoglycoside" in substance.lower():
+            return reasons["Aminoglycosides"]
+        
+        # Fallback to general mechanism
+        return "Physical/Chemical incompatibility - avoid simultaneous administration"
+    
     def check_interactions(self):
         """Check for drug-drug interactions and incompatibilities"""
         selected_drugs = [abx["drug_var"].get() for abx in self.antibiotic_frames if abx["drug_var"].get()]
@@ -3529,7 +3577,7 @@ class OncologyApp:
                 "notes": "Mesna protection required for doses >1000mg/m². Aggressive hydration (2000mL/m²/day)."
             },
             "Methotrexate": {
-                "dose": [12, 15, "g/m²"],
+                "dose": [0.2, 15, "g/m²"],
                 "side_effects": ["Myelosuppression", "Mucositis", "Nephrotoxicity", "Hepatotoxicity", "Neurotoxicity"],
                 "compatible_fluids": ["D5W"],
                 "incompatible_fluids": {
@@ -3632,6 +3680,104 @@ class OncologyApp:
                 },
                 "photosensitive": False,
                 "notes": "High-dose regimen requires steroid eye drops prophylaxis. Administer over 1-3 hours."
+            },
+            "Daunorubicin": {
+                "dose": [25, 45, "mg/m²"],
+                "side_effects": ["Cardiotoxicity", "Myelosuppression", "Red urine", "Mucositis", "Radiation recall"],
+                "compatible_fluids": ["D5W", "NS"],
+                "incompatible_fluids": {
+                    "Heparin": "Forms precipitate",
+                    "Alkaline solutions": "Causes degradation",
+                    "Dexamethasone": "Physical incompatibility"
+                },
+                "interactions": {
+                    "Cyclophosphamide": "Increased myocardial damage",
+                    "Trastuzumab": "Synergistic cardiotoxicity",
+                    "CYP3A4 inhibitors": "Increased serum levels"
+                },
+                "photosensitive": False,
+                "notes": "Cumulative lifetime dose limit 550mg/m². Cardiac monitoring required. Severe vesicant."
+            },
+            "Asparaginase": {
+                "dose": [5000, 10000, "IU/m²"],
+                "side_effects": ["Allergic reactions", "Pancreatitis", "Hyperglycemia", "Coagulopathy", "Hepatotoxicity"],
+                "compatible_fluids": ["NS"],
+                "incompatible_fluids": {
+                    "Dextrose solutions": "Reduced stability",
+                    "Dexamethasone": "Forms haze",
+                    "Vancomycin": "Physical incompatibility"
+                },
+                "interactions": {
+                    "Anticoagulants": "Increased bleeding risk",
+                    "Methotrexate": "Reduced efficacy",
+                    "Vaccines": "Avoid live vaccines"
+                },
+                "photosensitive": True,
+                "notes": "Requires test dose for hypersensitivity. Monitor amylase/lipase. Administer over 1-2 hours."
+            },
+            "Melphalan": {
+                "dose": [10, 20, "mg/m²"],
+                "side_effects": ["Myelosuppression", "Nausea/vomiting", "Secondary malignancies", "Pulmonary fibrosis"],
+                "compatible_fluids": ["NS"],
+                "incompatible_fluids": {
+                    "D5W": "Reduced stability",
+                    "Ciprofloxacin": "Chemical interaction"
+                },
+                "interactions": {
+                    "Cyclosporine": "Increased nephrotoxicity",
+                    "Nalidixic acid": "Severe hemorrhagic colitis",
+                    "Live vaccines": "Contraindicated"
+                },
+                "photosensitive": False,
+                "notes": "Administer via central line. Premedicate with antiemetics. Handle with cytotoxic precautions."
+            },
+            "Busulfan": {
+                "dose": [0.8, 1.2, "mg/kg"],
+                "side_effects": ["Seizures", "Pulmonary toxicity", "Veno-occlusive disease", "Hyperpigmentation"],
+                "compatible_fluids": ["NS"],
+                "incompatible_fluids": {
+                    "D5W": "Reduced stability",
+                    "Heparin": "Incompatible"
+                },
+                "interactions": {
+                    "Phenytoin": "Reduced busulfan levels",
+                    "Acetaminophen": "Reduced glutathione levels",
+                    "Itraconazole": "Increased exposure"
+                },
+                "photosensitive": False,
+                "notes": "Anticonvulsant prophylaxis required. Therapeutic drug monitoring recommended. Administer over 2 hours."
+            },
+            "Thioguanine (6-TG)": {
+                "dose": [75, 100, "mg/m²"],
+                "side_effects": ["Hepatotoxicity", "Myelosuppression", "Hyperuricemia", "Mucositis"],
+                "compatible_fluids": ["D5W"],
+                "incompatible_fluids": {
+                    "Allopurinol": "Increased toxicity risk",
+                    "Cytarabine": "Synergistic toxicity"
+                },
+                "interactions": {
+                    "Allopurinol": "Requires dose reduction",
+                    "Warfarin": "Increased anticoagulation",
+                    "Live vaccines": "Avoid concurrent use"
+                },
+                "photosensitive": True,
+                "notes": "Monitor liver function tests. Usually administered orally. Adjust dose for TPMT deficiency."
+            },
+            "Bleomycin": {
+                "dose": [10, 20, "units/m²"],
+                "side_effects": ["Pulmonary fibrosis", "Fever/chills", "Skin toxicity", "Hypersensitivity"],
+                "compatible_fluids": ["NS", "D5W"],
+                "incompatible_fluids": {
+                    "Aminophylline": "Forms precipitate",
+                    "Dexamethasone": "Physical incompatibility"
+                },
+                "interactions": {
+                    "Oxygen therapy": "Increased pulmonary toxicity",
+                    "Cisplatin": "Synergistic toxicity",
+                    "Radiation": "Enhanced skin reactions"
+                },
+                "photosensitive": False,
+                "notes": "Cumulative lifetime dose limit 400 units. Monitor pulmonary function tests. Premedicate with steroids."
             }
         }
         
@@ -3664,7 +3810,7 @@ class OncologyApp:
         drug_combo.grid(row=1, column=1, padx=5, pady=5, sticky="w")
         drug_combo.bind("<<ComboboxSelected>>", self.update_drug_info)
         
-        ttk.Label(left_panel, text="Dose per kg/m²:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        ttk.Label(left_panel, text="Dose per/m²:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
         ttk.Entry(left_panel, textvariable=self.dose_var).grid(row=2, column=1, padx=5, pady=5, sticky="w")
         
         ttk.Label(left_panel, text="Max Dose:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
@@ -6356,3 +6502,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = OncologyApp(root)
     root.mainloop()
+    
