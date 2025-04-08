@@ -4,6 +4,7 @@ from tkinter import ttk, messagebox, filedialog
 import json
 import sys
 import os
+import tempfile
 import pandas as pd
 from datetime import datetime
 from tkcalendar import Calendar
@@ -1332,12 +1333,16 @@ class OncologyApp:
         self.lab_ef_window = tk.Toplevel(self.root)
         self.lab_ef_window.title("Lab Investigations & EF Documentation")
         self.lab_ef_window.geometry("1100x850")
+        self.lab_ef_window.state('zoomed')
+
+        # Configure mouse wheel scrolling
+        self.lab_ef_window.bind("<MouseWheel>", self.on_mousewheel)
         
         # Store current patient data if provided
         self.current_lab_patient = patient_data
         self.current_lab_data_index = -1  # -1 means new entry, otherwise index of viewed data
         
-        # Patient info frame with file number display
+        # Patient info frame
         patient_frame = ttk.Frame(self.lab_ef_window, style='TFrame')
         patient_frame.pack(fill=tk.X, padx=10, pady=10)
         
@@ -1351,20 +1356,13 @@ class OncologyApp:
         self.patient_info_label = ttk.Label(patient_frame, text=patient_info, font=('Helvetica', 12, 'bold'))
         self.patient_info_label.pack(side=tk.LEFT)
         
-        # Add patient selection button if no patient provided
         if not patient_data:
-                button = ttk.Button(patient_frame, text="Select Patient", 
-                                    command=self.select_patient_for_labs)
-                
-                # Set the button size and color
-                button.config(width=30, padding=15, style='Red.TButton')  # Adjust width and padding as needed
-                
-                # Create a style for the button
-                style = ttk.Style()
-                style.configure('Red.TButton', background='red', foreground='white')  # Set button color
-                
-                # Pack the button in the center, slightly to the left
-                button.pack(side=tk.TOP, padx=5, pady=10, expand=True)
+            button = ttk.Button(patient_frame, text="Select Patient", 
+                              command=self.select_patient_for_labs)
+            button.config(width=30, padding=15, style='Red.TButton')
+            style = ttk.Style()
+            style.configure('Red.TButton', background='red', foreground='white')
+            button.pack(side=tk.TOP, padx=5, pady=10, expand=True)
         
         # Historical data controls
         hist_frame = ttk.Frame(self.lab_ef_window)
@@ -1374,14 +1372,18 @@ class OncologyApp:
         self.hist_data_label.pack(side=tk.LEFT)
         
         self.hist_prev_btn = ttk.Button(hist_frame, text="◀ Previous", state='disabled',
-                                       command=lambda: self.navigate_lab_ef_history(-1))
+                                      command=lambda: self.navigate_lab_ef_history(-1))
         self.hist_prev_btn.pack(side=tk.LEFT, padx=5)
         
         self.hist_next_btn = ttk.Button(hist_frame, text="Next ▶", state='disabled',
-                                       command=lambda: self.navigate_lab_ef_history(1))
+                                      command=lambda: self.navigate_lab_ef_history(1))
         self.hist_next_btn.pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(hist_frame, text="New Entry", command=self.create_new_lab_ef_entry).pack(side=tk.RIGHT)
+        ttk.Button(hist_frame, text="New Entry", command=self.create_new_lab_ef_entry).pack(side=tk.LEFT, padx=5)
+        
+        self.delete_entry_btn = ttk.Button(hist_frame, text="Delete Entry", state='disabled',
+                                         command=self.delete_current_lab_ef_entry)
+        self.delete_entry_btn.pack(side=tk.LEFT, padx=5)
         
         # Notebook for tabs
         notebook = ttk.Notebook(self.lab_ef_window)
@@ -1409,65 +1411,60 @@ class OncologyApp:
         
         ttk.Button(btn_frame, text="Close", command=self.lab_ef_window.destroy).pack(side=tk.RIGHT, padx=5)
         
-        # Load historical data if patient has previous entries
+        # Load historical data if available
         if patient_data and ("lab_results" in patient_data or "ef_data" in patient_data):
             self.load_lab_ef_history_controls()
 
-    def load_lab_ef_history_controls(self):
-        """Enable and setup historical data navigation controls"""
-        if not hasattr(self, 'current_lab_patient') or not self.current_lab_patient:
-            return
-        
-        lab_count = len(self.current_lab_patient.get("lab_results", []))
-        ef_count = len(self.current_lab_patient.get("ef_data", []))
-        total_entries = max(lab_count, ef_count)
-        
-        if total_entries > 0:
-            self.hist_prev_btn.config(state='normal')
-            self.hist_next_btn.config(state='normal')
-            self.current_lab_data_index = total_entries - 1  # Start with most recent
-            self.display_lab_ef_data(self.current_lab_data_index)
+    def on_mousewheel(self, event):
+        """Handle mouse wheel scrolling for the window"""
+        if event.delta > 0:
+            self.lab_ef_window.yview_scroll(-1, "units")
         else:
-            self.hist_prev_btn.config(state='disabled')
-            self.hist_next_btn.config(state='disabled')
-            self.current_lab_data_index = -1
-            self.hist_data_label.config(text="Viewing: New Entry")
+            self.lab_ef_window.yview_scroll(1, "units")
 
     def navigate_lab_ef_history(self, direction):
-        """Navigate through historical lab/EF data"""
+        """Fixed navigation through historical data"""
         if not hasattr(self, 'current_lab_patient') or not self.current_lab_patient:
+            messagebox.showwarning("Warning", "No patient selected")
             return
         
         lab_count = len(self.current_lab_patient.get("lab_results", []))
         ef_count = len(self.current_lab_patient.get("ef_data", []))
         total_entries = max(lab_count, ef_count)
         
+        if total_entries == 0:
+            messagebox.showinfo("Info", "No saved entries for this patient")
+            return
+            
         new_index = self.current_lab_data_index + direction
         
-        if 0 <= new_index < total_entries:
-            self.current_lab_data_index = new_index
-            self.display_lab_ef_data(self.current_lab_data_index)
-        elif new_index == -1:  # Show new entry
+        # Boundary checks
+        if new_index < -1:  # Shouldn't happen
+            return
+        elif new_index == -1:  # New entry
             self.create_new_lab_ef_entry()
-        else:
-            return  # Don't go beyond available entries
+        elif new_index >= total_entries:  # Beyond last entry
+            return
+        else:  # Valid existing entry
+            self.current_lab_data_index = new_index
+            self.display_lab_ef_data(new_index)
         
         # Update button states
         self.hist_prev_btn.config(state='normal' if new_index > 0 else 'disabled')
         self.hist_next_btn.config(state='normal' if new_index < total_entries - 1 else 'disabled')
+        self.delete_entry_btn.config(state='normal' if new_index != -1 else 'disabled')
 
     def display_lab_ef_data(self, index):
-        """Display historical lab and EF data at the given index"""
+        """Fixed display of historical data"""
         if not hasattr(self, 'current_lab_patient') or not self.current_lab_patient:
             return
+        
+        self.clear_lab_ef_entries()
         
         lab_data = self.current_lab_patient.get("lab_results", [])
         ef_data = self.current_lab_patient.get("ef_data", [])
         
-        # Clear current entries
-        self.clear_lab_ef_entries()
-        
-        # Load lab data if available
+        # Load lab data
         if index < len(lab_data):
             data = lab_data[index]
             self.lab_date_entry.insert(0, data.get("date", ""))
@@ -1475,39 +1472,36 @@ class OncologyApp:
             values = data.get("values", {})
             for test, entry in self.lab_entries.items():
                 if test in values:
-                    entry.insert(0, values[test])
-                    # Trigger critical value check
+                    entry.insert(0, str(values[test]))
                     entry.event_generate("<FocusOut>")
         
-        # Load EF data if available
+        # Load EF data
         if index < len(ef_data):
             data = ef_data[index]
             baseline = data.get("baseline", {})
             self.ef_baseline_date.insert(0, baseline.get("date", ""))
-            self.ef_baseline_value.insert(0, baseline.get("value", ""))
+            self.ef_baseline_value.insert(0, str(baseline.get("value", "")))
             
             serial = data.get("serial", [])
             for i, entry in enumerate(self.ef_serial_entries):
                 if i < len(serial):
                     entry["date"].insert(0, serial[i].get("date", ""))
-                    entry["value"].insert(0, serial[i].get("value", ""))
+                    entry["value"].insert(0, str(serial[i].get("value", "")))
                     entry["change_label"].config(text=serial[i].get("change", ""))
             
-            self.ef_notes.delete("1.0", tk.END)
             self.ef_notes.insert("1.0", data.get("notes", ""))
         
-        # Update status label
+        # Update status
         date_str = ""
         if index < len(lab_data) and "date" in lab_data[index]:
             date_str = lab_data[index]["date"]
         elif index < len(ef_data) and "baseline" in ef_data[index] and "date" in ef_data[index]["baseline"]:
             date_str = ef_data[index]["baseline"]["date"]
         
-        self.hist_data_label.config(text=f"Viewing: Entry from {date_str if date_str else 'Unknown date'}")
-        self.current_lab_data_index = index
+        self.hist_data_label.config(text=f"Viewing: Entry from {date_str if date_str else 'unknown date'}")
 
     def clear_lab_ef_entries(self):
-        """Clear all lab and EF entries"""
+        """Clear all entries"""
         self.lab_date_entry.delete(0, tk.END)
         for entry in self.lab_entries.values():
             entry.delete(0, tk.END)
@@ -1521,114 +1515,22 @@ class OncologyApp:
         self.ef_notes.delete("1.0", tk.END)
 
     def create_new_lab_ef_entry(self):
-        """Prepare the window for a new lab/EF entry"""
+        """Create new entry"""
         self.clear_lab_ef_entries()
         self.current_lab_data_index = -1
         self.hist_data_label.config(text="Viewing: New Entry")
         
-        # Set today's date as default
         today = datetime.now().strftime("%d/%m/%Y")
         self.lab_date_entry.insert(0, today)
         self.ef_baseline_date.insert(0, today)
         
-        # Update button states
         lab_count = len(self.current_lab_patient.get("lab_results", [])) if hasattr(self, 'current_lab_patient') else 0
         ef_count = len(self.current_lab_patient.get("ef_data", [])) if hasattr(self, 'current_lab_patient') else 0
         total_entries = max(lab_count, ef_count)
         
         self.hist_prev_btn.config(state='normal' if total_entries > 0 else 'disabled')
         self.hist_next_btn.config(state='disabled')
-
-    def select_patient_for_labs(self):
-        """Open patient selection dialog for lab/EF entries"""
-        self.patient_selection_window = tk.Toplevel(self.lab_ef_window)
-        self.patient_selection_window.title("Select Patient")
-        self.patient_selection_window.geometry("600x400")
-        
-        # Search frame
-        search_frame = ttk.Frame(self.patient_selection_window)
-        search_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT)
-        search_entry = ttk.Entry(search_frame, width=30)
-        search_entry.pack(side=tk.LEFT, padx=5)
-        search_entry.focus()
-        
-        ttk.Button(search_frame, text="Search", 
-                  command=lambda: self.search_patients_for_labs(search_entry.get())).pack(side=tk.LEFT)
-        
-        # Results treeview
-        columns = ("file_number", "name", "age", "gender")
-        self.lab_patient_tree = ttk.Treeview(self.patient_selection_window, columns=columns, show="headings")
-        
-        self.lab_patient_tree.heading("file_number", text="File #")
-        self.lab_patient_tree.heading("name", text="Name")
-        self.lab_patient_tree.heading("age", text="Age")
-        self.lab_patient_tree.heading("gender", text="Gender")
-        
-        self.lab_patient_tree.column("file_number", width=80)
-        self.lab_patient_tree.column("name", width=200)
-        self.lab_patient_tree.column("age", width=60)
-        self.lab_patient_tree.column("gender", width=80)
-        
-        scrollbar = ttk.Scrollbar(self.patient_selection_window, orient="vertical", command=self.lab_patient_tree.yview)
-        self.lab_patient_tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.lab_patient_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Populate with all patients initially
-        self.search_patients_for_labs("")
-        
-        # Select button
-        btn_frame = ttk.Frame(self.patient_selection_window)
-        btn_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Button(btn_frame, text="Select", 
-                  command=self.assign_selected_patient_for_labs).pack(side=tk.RIGHT)
-
-    def search_patients_for_labs(self, search_term):
-        """Search patients for lab assignment"""
-        self.lab_patient_tree.delete(*self.lab_patient_tree.get_children())
-        
-        for patient in self.patient_data:
-            if (search_term.lower() in patient.get("NAME", "").lower() or 
-                search_term.lower() in patient.get("FILE NUMBER", "").lower()):
-                self.lab_patient_tree.insert("", "end", values=(
-                    patient.get("FILE NUMBER", ""),
-                    patient.get("NAME", ""),
-                    patient.get("AGE", ""),
-                    patient.get("GENDER", "")
-                ))
-
-    def assign_selected_patient_for_labs(self):
-        """Assign selected patient to the lab/EF window"""
-        selected_item = self.lab_patient_tree.focus()
-        if not selected_item:
-            messagebox.showwarning("Warning", "Please select a patient first")
-            return
-            
-        patient_values = self.lab_patient_tree.item(selected_item, "values")
-        file_number = patient_values[0]
-        
-        # Find the complete patient data
-        for patient in self.patient_data:
-            if patient.get("FILE NUMBER") == file_number:
-                self.current_lab_patient = patient
-                self.current_file_number = file_number
-                
-                # Update the patient info display
-                self.patient_info_label.config(
-                    text=f"Patient: {patient.get('NAME', '')} (File#: {file_number})"
-                )
-                
-                # Load historical data controls
-                self.load_lab_ef_history_controls()
-                
-                self.patient_selection_window.destroy()
-                return
-        
-        messagebox.showerror("Error", "Patient data not found")
+        self.delete_entry_btn.config(state='disabled')
 
     def setup_lab_tab(self, parent):
         """Setup the lab investigations tab"""
@@ -1777,19 +1679,21 @@ class OncologyApp:
             ranges = LAB_RANGES[test]
             label = self.lab_crit_labels[test]
             
-            # Parse normal range (simplified parsing)
+            # Parse normal range
             normal_range = ranges["normal_range"]
             if "-" in normal_range:
-                low, high = map(float, normal_range.split("-")[:2])
+                low, high = map(float, normal_range.split("-"))
             elif "<" in normal_range:
                 low, high = 0, float(normal_range[1:])
+            elif ">" in normal_range:
+                low, high = float(normal_range[1:]), float('inf')
             else:
                 low, high = 0, float('inf')
             
             # Check critical values
-            if ranges["critical_low"] and value < float(ranges["critical_low"][1:]):
+            if ranges["critical_low"] and value <= float(ranges["critical_low"].replace("<", "")):
                 label.config(text="CRITICALLY LOW!", foreground="red")
-            elif ranges["critical_high"] and value > float(ranges["critical_high"][1:]):
+            elif ranges["critical_high"] and value >= float(ranges["critical_high"].replace(">", "")):
                 label.config(text="CRITICALLY HIGH!", foreground="red")
             elif value < low or value > high:
                 label.config(text="Abnormal", foreground="orange")
@@ -1832,6 +1736,7 @@ class OncologyApp:
         """Save lab and EF data to patient record"""
         if not hasattr(self, 'current_file_number') or not self.current_file_number:
             messagebox.showwarning("Warning", "Please select a patient first")
+            self.select_patient_for_labs()
             return
         
         # Find patient in data
@@ -1993,7 +1898,151 @@ class OncologyApp:
             
             # Schedule file deletion after a delay
             self.root.after(5000, delete_temp_file)
-                        
+
+    def select_patient_for_labs(self):
+        """Open patient selection dialog for lab/EF entries"""
+        self.patient_selection_window = tk.Toplevel(self.lab_ef_window)
+        self.patient_selection_window.title("Select Patient")
+        self.patient_selection_window.geometry("600x400")
+        
+        # Search frame
+        search_frame = ttk.Frame(self.patient_selection_window)
+        search_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT)
+        search_entry = ttk.Entry(search_frame, width=30)
+        search_entry.pack(side=tk.LEFT, padx=5)
+        search_entry.focus()
+        
+        ttk.Button(search_frame, text="Search", 
+                  command=lambda: self.search_patients_for_labs(search_entry.get())).pack(side=tk.LEFT)
+        
+        # Results treeview
+        columns = ("file_number", "name", "age", "gender")
+        self.lab_patient_tree = ttk.Treeview(self.patient_selection_window, columns=columns, show="headings")
+        
+        self.lab_patient_tree.heading("file_number", text="File #")
+        self.lab_patient_tree.heading("name", text="Name")
+        self.lab_patient_tree.heading("age", text="Age")
+        self.lab_patient_tree.heading("gender", text="Gender")
+        
+        self.lab_patient_tree.column("file_number", width=80)
+        self.lab_patient_tree.column("name", width=200)
+        self.lab_patient_tree.column("age", width=60)
+        self.lab_patient_tree.column("gender", width=80)
+        
+        scrollbar = ttk.Scrollbar(self.patient_selection_window, orient="vertical", command=self.lab_patient_tree.yview)
+        self.lab_patient_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.lab_patient_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Populate with all patients initially
+        self.search_patients_for_labs("")
+        
+        # Select button
+        btn_frame = ttk.Frame(self.patient_selection_window)
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Button(btn_frame, text="Select", 
+                  command=self.assign_selected_patient_for_labs).pack(side=tk.RIGHT)
+
+    def search_patients_for_labs(self, search_term):
+        """Search patients for lab assignment"""
+        self.lab_patient_tree.delete(*self.lab_patient_tree.get_children())
+        
+        for patient in self.patient_data:
+            if (search_term.lower() in patient.get("NAME", "").lower() or 
+                search_term.lower() in patient.get("FILE NUMBER", "").lower()):
+                self.lab_patient_tree.insert("", "end", values=(
+                    patient.get("FILE NUMBER", ""),
+                    patient.get("NAME", ""),
+                    patient.get("AGE", ""),
+                    patient.get("GENDER", "")
+                ))
+
+    def assign_selected_patient_for_labs(self):
+        """Assign selected patient to the lab/EF window"""
+        selected_item = self.lab_patient_tree.focus()
+        if not selected_item:
+            messagebox.showwarning("Warning", "Please select a patient first")
+            return
+            
+        patient_values = self.lab_patient_tree.item(selected_item, "values")
+        file_number = patient_values[0]
+        
+        # Find the complete patient data
+        for patient in self.patient_data:
+            if patient.get("FILE NUMBER") == file_number:
+                self.current_lab_patient = patient
+                self.current_file_number = file_number
+                
+                # Update the patient info display
+                self.patient_info_label.config(
+                    text=f"Patient: {patient.get('NAME', '')} (File#: {file_number})"
+                )
+                
+                # Load historical data controls
+                self.load_lab_ef_history_controls()
+                
+                self.patient_selection_window.destroy()
+                return
+        
+        messagebox.showerror("Error", "Patient data not found")
+
+    def load_lab_ef_history_controls(self):
+        """Enable and setup historical data navigation controls"""
+        if not hasattr(self, 'current_lab_patient') or not self.current_lab_patient:
+            return
+        
+        lab_count = len(self.current_lab_patient.get("lab_results", []))
+        ef_count = len(self.current_lab_patient.get("ef_data", []))
+        total_entries = max(lab_count, ef_count)
+        
+        if total_entries > 0:
+            self.hist_prev_btn.config(state='normal')
+            self.hist_next_btn.config(state='normal')
+            self.delete_entry_btn.config(state='normal')
+            self.current_lab_data_index = total_entries - 1  # Start with most recent
+            self.display_lab_ef_data(self.current_lab_data_index)
+        else:
+            self.hist_prev_btn.config(state='disabled')
+            self.hist_next_btn.config(state='disabled')
+            self.delete_entry_btn.config(state='disabled')
+            self.current_lab_data_index = -1
+            self.hist_data_label.config(text="Viewing: New Entry")
+
+    def delete_current_lab_ef_entry(self):
+        """Delete the currently viewed lab/EF entry"""
+        if not hasattr(self, 'current_lab_patient') or not self.current_lab_patient:
+            return
+            
+        if self.current_lab_data_index == -1:
+            messagebox.showwarning("Warning", "No entry selected to delete")
+            return
+            
+        confirm = messagebox.askyesno("Confirm Delete", 
+                                    "Are you sure you want to delete this lab/EF entry?")
+        if not confirm:
+            return
+            
+        # Delete from both lab and EF data if they exist at this index
+        if "lab_results" in self.current_lab_patient and self.current_lab_data_index < len(self.current_lab_patient["lab_results"]):
+            del self.current_lab_patient["lab_results"][self.current_lab_data_index]
+            
+        if "ef_data" in self.current_lab_patient and self.current_lab_data_index < len(self.current_lab_patient["ef_data"]):
+            del self.current_lab_patient["ef_data"][self.current_lab_data_index]
+            
+        # Update last modified info
+        self.current_lab_patient["LAST_MODIFIED_BY"] = self.current_user
+        self.current_lab_patient["LAST_MODIFIED_DATE"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        
+        self.save_patient_data()
+        messagebox.showinfo("Success", "Entry deleted successfully")
+        
+        # Reload history controls
+        self.load_lab_ef_history_controls()
+                                
     def show_statistics(self):
         """Show statistics window"""
         self.open_statistics_window()
@@ -2220,12 +2269,17 @@ class OncologyApp:
         
         # Drug selection dropdown
         ttk.Label(drug_frame, text="Select Chemotherapy Drug:").pack(side=tk.LEFT, padx=5)
-        
+
         self.drug_var = tk.StringVar()
         drug_dropdown = ttk.Combobox(drug_frame, textvariable=self.drug_var, 
-                                   state="readonly", width=30)
-        drug_dropdown.pack(side=tk.LEFT, padx=5)
-        
+                                   state="readonly", width=40)  # Increased width from 30 to 40
+
+        # Configure the dropdown list style to be wider
+        style = ttk.Style()
+        style.configure('TCombobox', postoffset=(0,0,400,0))  # Adjust the 400 value as needed
+
+        drug_dropdown.pack(side=tk.LEFT, padx=5)   
+             
         # Initialize drug data with detailed protocols
         self.drug_protocols = {
             "Anthracyclines (Doxorubicin, Daunorubicin, Epirubicin)": {
@@ -2472,15 +2526,41 @@ class OncologyApp:
         # Add general protocol
         doc.add_heading('General Management Protocol', level=2)
         general_steps = doc.add_paragraph()
-        general_steps.add_run("1. STOP infusion immediately\n")
-        general_steps.add_run("2. Aspirate residual drug\n")
-        general_steps.add_run("3. Assess extent (measure, photograph, grade severity)\n")
-        general_steps.add_run("4. Administer specific antidote\n")
-        general_steps.add_run("5. Apply appropriate compress (warm/cold)\n")
-        general_steps.add_run("6. Elevate extremity\n")
-        general_steps.add_run("7. Document thoroughly\n")
-        general_steps.add_run("8. Notify physician/oncologist")
+        general_steps.add_run("1. STOP INFUSION IMMEDIATELY\n")
+        general_steps.add_run("• Clamp the tubing closest to the IV site\n")
+        general_steps.add_run("• Discontinue the infusion pump\n")
+        general_steps.add_run("• Note exact time of recognition\n\n")
         
+        general_steps.add_run("2. LEAVE CATHETER IN PLACE INITIALLY\n")
+        general_steps.add_run("• Attempt to aspirate residual drug (use 1-3mL syringe for better suction)\n")
+        general_steps.add_run("• Gently aspirate for at least 1 minute before removing\n")
+        general_steps.add_run("• If unsuccessful, remove catheter after aspiration attempt\n\n")
+        
+        general_steps.add_run("3. ASSESS EXTENT OF EXTRAVASATION\n")
+        general_steps.add_run("• Measure area of induration/erythema in cm\n")
+        general_steps.add_run("• Photograph the site if possible\n")
+        general_steps.add_run("• Grade severity (1-4) based on symptoms\n\n")
+        
+        general_steps.add_run("4. ADMINISTER SPECIFIC ANTIDOTE\n")
+        general_steps.add_run("• See drug-specific protocols below\n")
+        general_steps.add_run("• Prepare antidote within 15 minutes of recognition\n")
+        general_steps.add_run("• Use 25-27G needle for subcutaneous administration\n\n")
+        
+        general_steps.add_run("5. APPLY TOPICAL MANAGEMENT\n")
+        general_steps.add_run("• Warm compress (40-42°C) for vinca alkaloids\n")
+        general_steps.add_run("• Cold compress (ice pack wrapped in cloth) for anthracyclines\n")
+        general_steps.add_run("• Elevate extremity above heart level\n\n")
+        
+        general_steps.add_run("6. DOCUMENT THOROUGHLY\n")
+        general_steps.add_run("• Complete incident report form\n")
+        general_steps.add_run("• Record drug, concentration, volume extravasated\n")
+        general_steps.add_run("• Document patient response and interventions\n\n")
+        
+        general_steps.add_run("7. NOTIFY PHYSICIAN/ONCOLOGIST\n")
+        general_steps.add_run("• Immediate notification for grade 3-4 extravasation\n")
+        general_steps.add_run("• Consider surgical consult for severe cases\n")
+        general_steps.add_run("• Report to pharmacy for quality improvement")
+
         # Add drug-specific protocol
         doc.add_heading(f'{selected_drug} Specific Protocol', level=2)
         
@@ -2503,17 +2583,18 @@ class OncologyApp:
         doc.add_paragraph("\nGenerated by OncoCare Pediatric Oncology System")
         doc.add_paragraph(datetime.now().strftime("%Y-%m-%d %H:%M"))
         
-        # Save and print
+        # Save the document to a temporary file
         temp_file = "temp_extravasation_protocol.docx"
         doc.save(temp_file)
         
+        # Open the document for the user to view and save if desired
         try:
-            os.startfile(temp_file, "print")
-            messagebox.showinfo("Print", "Protocol sent to printer")
+            os.startfile(temp_file)
+            messagebox.showinfo("Document Opened", "Protocol document opened. You can save it if you wish.")
         except Exception as e:
-            messagebox.showerror("Print Error", f"Could not print document: {str(e)}")
+            messagebox.showerror("Open Error", f"Could not open document: {str(e)}")
         finally:
-            # Clean up after printing
+            # Clean up after a delay
             def delete_temp_file():
                 try:
                     os.remove(temp_file)
@@ -2522,7 +2603,7 @@ class OncologyApp:
             
             # Schedule file deletion after a delay
             self.root.after(5000, delete_temp_file)
-
+            
     def show_calculators(self):
         """Display the medical calculators window"""
         self.clear_frame()
@@ -2550,7 +2631,14 @@ class OncologyApp:
         right_frame = tk.Frame(main_frame, bg='white')
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
-        # Notebook for different calculators
+        # Button frame at bottom
+        btn_frame = ttk.Frame(right_frame, padding="10 10 10 10", style='TFrame')
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        ttk.Button(btn_frame, text="Back to Menu", command=self.main_menu,
+                  style='Blue.TButton').pack(fill=tk.X, pady=10)
+        
+        # Notebook for different calculators (above button)
         notebook = ttk.Notebook(right_frame)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
@@ -2574,546 +2662,670 @@ class OncologyApp:
         notebook.add(abx_frame, text="Antibiotics Calculator")
         self.setup_antibiotics_calculator(abx_frame)
         
-        # Button frame
-        btn_frame = ttk.Frame(right_frame, padding="10 10 10 10", style='TFrame')
-        btn_frame.pack(fill=tk.X)
-        
-        ttk.Button(btn_frame, text="Back to Menu", command=self.main_menu,
-                  style='Blue.TButton').pack(fill=tk.X, pady=10)
-
     def setup_antibiotics_calculator(self, parent):
-        """Setup the antibiotics calculator interface"""
-        frame = self.create_scrollable_frame(parent)
+        """Setup the antibiotics calculator interface for pediatric oncology patients"""
+        # Create main container with scrollable canvas
+        main_frame = ttk.Frame(parent)
+        main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Antibiotics data dictionary (same as before)
+        canvas = tk.Canvas(main_frame, borderwidth=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        
+        # Configure age groups
+        self.age_groups = [
+            "0-30 days (Neonate)",
+            "1 month-1 year (Infant)",
+            "1-6 years (Young child)",
+            "6-12 years (Older child)",
+            "12+ years (Adolescent)"
+        ]
+        
+        # Expanded antibiotics data with age-specific dosing for oncology patients
         self.antibiotics_data = {
-            "MEROPENEM": {
-                "dose_range": "10-40 mg/kg/dose",
-                "min_dose": 10,
-                "max_dose": 40,
-                "max_total_dose": 2000,
-                "unit": "mg",
-                "frequency": "Every 8 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Dextrose solutions", "Other beta-lactams"],
-                "interactions": "Probenecid may decrease renal clearance. Valproic acid levels may be reduced.",
-                "notes": "Adjust dose in renal impairment. CNS side effects at high doses."
-            },
-            "AMIKACIN": {
-                "dose_range": "15-22.5 mg/kg/day",
-                "min_dose": 15,
-                "max_dose": 22.5,
-                "max_total_dose": 1500,
-                "unit": "mg",
-                "frequency": "Every 24 hours",
-                "per_day": True,
-                "incompatible_solutions": ["Penicillins", "Cephalosporins"],
-                "interactions": "Nephrotoxic when combined with other aminoglycosides, vancomycin, or diuretics.",
-                "notes": "Monitor levels. Adjust dose in renal impairment."
-            },
-            "CEFTRIAXONE (ROCEPHINE)": {
-                "dose_range": "50-100 mg/kg/day",
-                "min_dose": 50,
-                "max_dose": 100,
-                "max_total_dose": 4000,
-                "unit": "mg",
-                "frequency": "Every 12-24 hours",
-                "per_day": True,
-                "incompatible_solutions": ["Calcium-containing solutions", "Aminoglycosides"],
-                "interactions": "May increase warfarin effect. Calcium precipitates in neonates.",
-                "notes": "Do not mix with calcium-containing solutions in neonates."
-            },
-            "CIPROFLOXACIN": {
-                "dose_range": "10-20 mg/kg/dose",
-                "min_dose": 10,
-                "max_dose": 20,
-                "max_total_dose": 800,
-                "unit": "mg",
-                "frequency": "Every 12 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Divalent cation solutions"],
-                "interactions": "Antacids reduce absorption. May increase theophylline levels.",
-                "notes": "Avoid in growing children due to cartilage toxicity risk."
-            },
-            "TAZOCIN": {
-                "dose_range": "80-100 mg/kg/dose (piperacillin component)",
-                "min_dose": 80,
-                "max_dose": 100,
-                "max_total_dose": 4000,
-                "unit": "mg",
-                "frequency": "Every 6-8 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Aminoglycosides"],
-                "interactions": "Probenecid may increase levels. May increase bleeding risk with anticoagulants.",
-                "notes": "Contains piperacillin/tazobactam 8:1 ratio."
-            },
-            "VANCOMYCIN": {
-                "dose_range": "10-15 mg/kg/dose",
-                "min_dose": 10,
-                "max_dose": 15,
-                "max_total_dose": 1000,
-                "unit": "mg",
-                "frequency": "Every 6-8 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Alkaline solutions", "Beta-lactams"],
-                "interactions": "Nephrotoxic with aminoglycosides. Ototoxic with loop diuretics.",
-                "notes": "Monitor levels. Red man syndrome risk with rapid infusion."
-            },
-            "METRONIDAZOLE (FLAGYL)": {
-                "dose_range": "7.5-10 mg/kg/dose",
-                "min_dose": 7.5,
-                "max_dose": 10,
-                "max_total_dose": 500,
-                "unit": "mg",
-                "frequency": "Every 8 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Aluminum-containing solutions"],
-                "interactions": "Disulfiram-like reaction with alcohol. Increases warfarin effect.",
-                "notes": "For anaerobic infections. CNS toxicity at high doses."
-            },
-            "FLUCONAZOLE": {
-                "dose_range": "6-12 mg/kg/day",
-                "min_dose": 6,
-                "max_dose": 12,
-                "max_total_dose": 800,
-                "unit": "mg",
-                "frequency": "Every 24 hours",
-                "per_day": True,
-                "incompatible_solutions": ["None known"],
-                "interactions": "Increases phenytoin, warfarin levels. Rifampin decreases levels.",
-                "notes": "Adjust dose in renal impairment."
-            },
-            "AMPHOTERICIN B": {
-                "dose_range": "1-1.5 mg/kg/day",
-                "min_dose": 1,
-                "max_dose": 1.5,
-                "max_total_dose": 50,
-                "unit": "mg",
-                "frequency": "Every 24 hours",
-                "per_day": True,
-                "incompatible_solutions": ["Saline solutions"],
-                "interactions": "Nephrotoxic with cyclosporine, aminoglycosides. Hypokalemia with diuretics.",
-                "notes": "Pre-medicate for infusion reactions. Monitor renal function."
-            },
-            "VORICONAZOLE": {
-                "dose_range": "7-8 mg/kg/dose",
-                "min_dose": 7,
-                "max_dose": 8,
-                "max_total_dose": 400,
-                "unit": "mg",
-                "frequency": "Every 12 hours",
-                "per_day": False,
-                "incompatible_solutions": ["None known"],
-                "interactions": "Many CYP450 interactions. Avoid with rifampin, carbamazepine.",
-                "notes": "Therapeutic drug monitoring recommended."
-            },
-            "AUGMENTIN": {
-                "dose_range": "25-45 mg/kg/dose (amoxicillin component)",
-                "min_dose": 25,
-                "max_dose": 45,
-                "max_total_dose": 1750,
-                "unit": "mg",
-                "frequency": "Every 8 hours",
-                "per_day": False,
-                "incompatible_solutions": ["None known"],
-                "interactions": "Probenecid increases levels. Allopurinol increases rash risk.",
-                "notes": "Contains amoxicillin/clavulanate 7:1 ratio."
-            },
-            "ACYCLOVIR": {
-                "dose_range": "10-20 mg/kg/dose",
-                "min_dose": 10,
-                "max_dose": 20,
-                "max_total_dose": 800,
-                "unit": "mg",
-                "frequency": "Every 8 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Alkaline solutions"],
-                "interactions": "Probenecid increases levels. Nephrotoxic with other nephrotoxic drugs.",
-                "notes": "Hydrate well. Adjust dose in renal impairment."
-            },
-            "AMPICILLIN": {
-                "dose_range": "25-50 mg/kg/dose",
-                "min_dose": 25,
-                "max_dose": 50,
-                "max_total_dose": 2000,
-                "unit": "mg",
-                "frequency": "Every 6 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Aminoglycosides"],
-                "interactions": "Probenecid increases levels. Allopurinol increases rash risk.",
-                "notes": "Monitor for rash. Adjust dose in renal impairment."
-            },
-            "CLARITHROMYCIN": {
-                "dose_range": "7.5-15 mg/kg/dose",
-                "min_dose": 7.5,
-                "max_dose": 15,
-                "max_total_dose": 1000,
-                "unit": "mg",
-                "frequency": "Every 12 hours",
-                "per_day": False,
-                "incompatible_solutions": ["None known"],
-                "interactions": "Many CYP450 interactions. Increases digoxin, theophylline levels.",
-                "notes": "QT prolongation risk at high doses."
-            },
-            "CEFTAZIDIME": {
-                "dose_range": "30-50 mg/kg/dose",
-                "min_dose": 30,
-                "max_dose": 50,
-                "max_total_dose": 2000,
-                "unit": "mg",
-                "frequency": "Every 8 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Aminoglycosides"],
-                "interactions": "Probenecid increases levels. Nephrotoxic with loop diuretics.",
-                "notes": "Pseudomonas coverage. Adjust dose in renal impairment."
-            },
-            "CLOXACILLIN": {
-                "dose_range": "25-50 mg/kg/dose",
-                "min_dose": 25,
-                "max_dose": 50,
-                "max_total_dose": 2000,
-                "unit": "mg",
-                "frequency": "Every 6 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Aminoglycosides"],
-                "interactions": "Probenecid increases levels. Allopurinol increases rash risk.",
-                "notes": "For MSSA infections. Adjust dose in renal impairment."
-            },
-            "CLINDAMYCIN": {
-                "dose_range": "5-10 mg/kg/dose",
-                "min_dose": 5,
-                "max_dose": 10,
-                "max_total_dose": 600,
-                "unit": "mg",
-                "frequency": "Every 6-8 hours",
-                "per_day": False,
-                "incompatible_solutions": ["Aminoglycosides"],
-                "interactions": "Neuromuscular blockade with paralytics. Erythromycin antagonizes effect.",
-                "notes": "C. diff risk. Good anaerobic coverage."
-            },
-            "COLISTIN": {
-                "dose_range": "2.5-5 mg/kg/day (CBA)",
-                "min_dose": 2.5,
-                "max_dose": 5,
-                "max_total_dose": 300,
-                "unit": "mg",
-                "frequency": "Every 8-12 hours",
-                "per_day": True,
-                "incompatible_solutions": ["None known"],
-                "interactions": "Nephrotoxic with other nephrotoxic drugs. Neuromuscular blockade with paralytics.",
-                "notes": "For MDR gram-negative infections. Monitor renal function."
-            },
-            "GENTAMICIN": {
-                "dose_range": "5-7.5 mg/kg/day",
-                "min_dose": 5,
-                "max_dose": 7.5,
-                "max_total_dose": 400,
-                "unit": "mg",
-                "frequency": "Every 24 hours",
-                "per_day": True,
-                "incompatible_solutions": ["Penicillins", "Cephalosporins"],
-                "interactions": "Nephrotoxic when combined with other aminoglycosides, vancomycin, or diuretics.",
-                "notes": "Monitor levels. Adjust dose in renal impairment."
-            }
+                "MEROPENEM": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 8 hours"},
+                                "1-6 years (Young child)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 8 hours"},
+                                "6-12 years (Older child)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 8 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 8 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Dextrose >5%", "Other beta-lactams", "Aminoglycosides"],
+                        "interactions": {
+                                "Probenecid": "Decreases renal clearance",
+                                "Valproic acid": "Reduces levels (avoid combination)",
+                                "Warfarin": "Increased INR risk"
+                        },
+                        "notes": "First-line for febrile neutropenia. Higher doses for CNS infections. Adjust for renal impairment."
+                },
+
+                "AMIKACIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 15, "max_dose": 20, "max_total": 1500, "frequency": "Every 24 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 15, "max_dose": 22.5, "max_total": 1500, "frequency": "Every 24 hours"},
+                                "1-6 years (Young child)": {"min_dose": 15, "max_dose": 22.5, "max_total": 1500, "frequency": "Every 24 hours"},
+                                "6-12 years (Older child)": {"min_dose": 15, "max_dose": 22.5, "max_total": 1500, "frequency": "Every 24 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 15, "max_dose": 22.5, "max_total": 1500, "frequency": "Every 24 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Penicillins", "Cephalosporins", "Heparin"],
+                        "interactions": {
+                                "Vancomycin": "Increased nephrotoxicity",
+                                "Diuretics": "Ototoxicity risk",
+                                "Cisplatin": "Increased toxicity"
+                        },
+                        "notes": "Monitor levels (trough <5 mg/L). Adjust dose based on renal function."
+                },
+
+                "CEFTRIAXONE (ROCEPHINE)": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 50, "max_dose": 80, "max_total": 4000, "frequency": "Every 24 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 50, "max_dose": 100, "max_total": 4000, "frequency": "Every 12-24 hours"},
+                                "1-6 years (Young child)": {"min_dose": 50, "max_dose": 100, "max_total": 4000, "frequency": "Every 12-24 hours"},
+                                "6-12 years (Older child)": {"min_dose": 50, "max_dose": 100, "max_total": 4000, "frequency": "Every 12-24 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 50, "max_dose": 100, "max_total": 4000, "frequency": "Every 12-24 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Calcium-containing solutions", "Aminoglycosides"],
+                        "interactions": {
+                                "Warfarin": "Increased effect",
+                                "Calcium": "Precipitation risk (especially neonates)",
+                                "Probenecid": "Increased levels"
+                        },
+                        "notes": "Avoid in hyperbilirubinemic neonates. Do not mix with calcium-containing solutions."
+                },
+
+                "CIPROFLOXACIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 10, "max_dose": 15, "max_total": 800, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 12 hours"},
+                                "1-6 years (Young child)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 12 hours"},
+                                "6-12 years (Older child)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 12 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 12 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Divalent cation solutions", "TPN"],
+                        "interactions": {
+                                "Antacids": "Reduced absorption",
+                                "Theophylline": "Increased levels",
+                                "Warfarin": "Increased INR"
+                        },
+                        "notes": "Reserve for resistant gram-negative infections. Risk of tendonitis. Avoid in growing children when possible."
+                },
+
+                "TAZOCIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 8 hours"},
+                                "1-6 years (Young child)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 6 hours"},
+                                "6-12 years (Older child)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 6 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 6 hours"}
+                        },
+                        "unit": "mg (piperacillin component)",
+                        "incompatible": ["Aminoglycosides", "Vancomycin"],
+                        "interactions": {
+                                "Probenecid": "Increased levels",
+                                "Anticoagulants": "Increased bleeding risk",
+                                "Methotrexate": "Increased toxicity"
+                        },
+                        "notes": "Good Pseudomonas coverage. Contains piperacillin/tazobactam 8:1 ratio."
+                },
+
+                "VANCOMYCIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 24 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"},
+                                "1-6 years (Young child)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 8 hours"},
+                                "6-12 years (Older child)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 6 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 6 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Alkaline solutions", "Beta-lactams", "Heparin"],
+                        "interactions": {
+                                "Aminoglycosides": "Nephrotoxicity risk",
+                                "Loop diuretics": "Ototoxicity risk",
+                                "NSAIDs": "Nephrotoxicity"
+                        },
+                        "notes": "Monitor trough levels (15-20 mg/L for serious infections). Pre-medicate for red man syndrome."
+                },
+
+                "METRONIDAZOLE (FLAGYL)": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 8 hours"},
+                                "1-6 years (Young child)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 8 hours"},
+                                "6-12 years (Older child)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 8 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 8 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Aluminum-containing solutions"],
+                        "interactions": {
+                                "Alcohol": "Disulfiram-like reaction",
+                                "Warfarin": "Increased effect",
+                                "Phenytoin": "Increased levels"
+                        },
+                        "notes": "For anaerobic infections. CNS toxicity at high doses. IV form contains sodium."
+                },
+
+                "FLUCONAZOLE": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 48 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 24 hours"},
+                                "1-6 years (Young child)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 24 hours"},
+                                "6-12 years (Older child)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 24 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 24 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "Phenytoin": "Increased levels",
+                                "Warfarin": "Increased INR",
+                                "Rifampin": "Decreased fluconazole levels"
+                        },
+                        "notes": "Adjust dose in renal impairment. Loading dose recommended for serious infections."
+                },
+
+                "AMPHOTERICIN B": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"},
+                                "1-6 years (Young child)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"},
+                                "6-12 years (Older child)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"}
+                        },
+                        "unit": "mg/kg",
+                        "incompatible": ["Saline solutions", "Other antifungals"],
+                        "interactions": {
+                                "Cyclosporine": "Increased nephrotoxicity",
+                                "Diuretics": "Hypokalemia risk",
+                                "Azoles": "Antagonism"
+                        },
+                        "notes": "Pre-medicate with antipyretics/antihistamines. Monitor renal function and electrolytes."
+                },
+
+                "VORICONAZOLE": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"},
+                                "1-6 years (Young child)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"},
+                                "6-12 years (Older child)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "Rifampin": "Decreased levels",
+                                "Carbamazepine": "Decreased levels",
+                                "Warfarin": "Increased INR"
+                        },
+                        "notes": "Therapeutic drug monitoring recommended. Visual disturbances common."
+                },
+
+                "AUGMENTIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 25, "max_dose": 30, "max_total": 1750, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 25, "max_dose": 45, "max_total": 1750, "frequency": "Every 8 hours"},
+                                "1-6 years (Young child)": {"min_dose": 25, "max_dose": 45, "max_total": 1750, "frequency": "Every 8 hours"},
+                                "6-12 years (Older child)": {"min_dose": 25, "max_dose": 45, "max_total": 1750, "frequency": "Every 8 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 25, "max_dose": 45, "max_total": 1750, "frequency": "Every 8 hours"}
+                        },
+                        "unit": "mg (amoxicillin component)",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "Probenecid": "Increased levels",
+                                "Allopurinol": "Increased rash risk",
+                                "Warfarin": "Increased INR"
+                        },
+                        "notes": "Contains amoxicillin/clavulanate 7:1 ratio. Higher diarrhea risk than plain amoxicillin."
+                },
+
+                "ACYCLOVIR": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"},
+                                "1-6 years (Young child)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"},
+                                "6-12 years (Older child)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Alkaline solutions"],
+                        "interactions": {
+                                "Probenecid": "Increased levels",
+                                "Nephrotoxic drugs": "Increased toxicity",
+                                "Zidovudine": "Neurotoxicity"
+                        },
+                        "notes": "Hydrate well. Adjust dose in renal impairment. Higher doses for HSV encephalitis."
+                },
+
+                "AMPICILLIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
+                                "1-6 years (Young child)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
+                                "6-12 years (Older child)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Aminoglycosides"],
+                        "interactions": {
+                                "Probenecid": "Increased levels",
+                                "Allopurinol": "Increased rash risk",
+                                "Warfarin": "Increased INR"
+                        },
+                        "notes": "Monitor for rash. Adjust dose in renal impairment. Listeria coverage."
+                },
+
+                "CLARITHROMYCIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 7.5, "max_dose": 10, "max_total": 1000, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 7.5, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"},
+                                "1-6 years (Young child)": {"min_dose": 7.5, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"},
+                                "6-12 years (Older child)": {"min_dose": 7.5, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 7.5, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "Digoxin": "Increased levels",
+                                "Theophylline": "Increased levels",
+                                "Warfarin": "Increased INR"
+                        },
+                        "notes": "QT prolongation risk at high doses. Atypical pathogen coverage."
+                },
+
+                "CEFTAZIDIME": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
+                                "1-6 years (Young child)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
+                                "6-12 years (Older child)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Aminoglycosides", "Vancomycin"],
+                        "interactions": {
+                                "Probenecid": "Increased levels",
+                                "Loop diuretics": "Nephrotoxicity risk"
+                        },
+                        "notes": "Pseudomonas coverage. Adjust dose in renal impairment."
+                },
+
+                "CLOXACILLIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
+                                "1-6 years (Young child)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
+                                "6-12 years (Older child)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Aminoglycosides"],
+                        "interactions": {
+                                "Probenecid": "Increased levels",
+                                "Allopurinol": "Increased rash risk"
+                        },
+                        "notes": "For MSSA infections. Adjust dose in renal impairment."
+                },
+
+                "CLINDAMYCIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 5, "max_dose": 7.5, "max_total": 600, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 5, "max_dose": 10, "max_total": 600, "frequency": "Every 8 hours"},
+                                "1-6 years (Young child)": {"min_dose": 5, "max_dose": 10, "max_total": 600, "frequency": "Every 6-8 hours"},
+                                "6-12 years (Older child)": {"min_dose": 5, "max_dose": 10, "max_total": 600, "frequency": "Every 6-8 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 5, "max_dose": 10, "max_total": 600, "frequency": "Every 6-8 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Aminoglycosides"],
+                        "interactions": {
+                                "Neuromuscular blockers": "Enhanced blockade",
+                                "Erythromycin": "Antagonism"
+                        },
+                        "notes": "C. diff risk. Good anaerobic and soft tissue coverage."
+                },
+
+                "COLISTIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 2.5, "max_dose": 3, "max_total": 300, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 2.5, "max_dose": 5, "max_total": 300, "frequency": "Every 12 hours"},
+                                "1-6 years (Young child)": {"min_dose": 2.5, "max_dose": 5, "max_total": 300, "frequency": "Every 12 hours"},
+                                "6-12 years (Older child)": {"min_dose": 2.5, "max_dose": 5, "max_total": 300, "frequency": "Every 12 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 2.5, "max_dose": 5, "max_total": 300, "frequency": "Every 12 hours"}
+                        },
+                        "unit": "mg (CBA)",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "Aminoglycosides": "Increased nephrotoxicity",
+                                "Neuromuscular blockers": "Enhanced blockade"
+                        },
+                        "notes": "For MDR gram-negative infections. Monitor renal function closely."
+                },
+
+                "GENTAMICIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"},
+                                "1-6 years (Young child)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"},
+                                "6-12 years (Older child)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Penicillins", "Cephalosporins", "Vancomycin"],
+                        "interactions": {
+                                "Vancomycin": "Synergistic nephrotoxicity",
+                                "Loop diuretics": "Ototoxicity",
+                                "NSAIDs": "Nephrotoxicity"
+                        },
+                        "notes": "Monitor levels (trough <1 mg/L). Once daily dosing preferred."
+                },
+
+                # Additional critical agents for oncology patients
+                "CEFEPIME": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
+                                "1-6 years (Young child)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
+                                "6-12 years (Older child)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["Aminoglycosides", "Metronidazole"],
+                        "interactions": {
+                                "Aminoglycosides": "Nephrotoxicity",
+                                "Probenecid": "Increased levels"
+                        },
+                        "notes": "4th gen cephalosporin with better gram-positive coverage than ceftazidime."
+                },
+
+                "LINEZOLID": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 8 hours"},
+                                "1-6 years (Young child)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 8 hours"},
+                                "6-12 years (Older child)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 8 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 12 hours"}
+                        },
+                        "unit": "mg",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "SSRIs": "Serotonin syndrome risk",
+                                "MAOIs": "Hypertensive crisis",
+                                "Adrenergics": "Increased pressor response"
+                        },
+                        "notes": "For VRE and MRSA. Monitor CBC for myelosuppression. Limited course recommended."
+                },
+
+                "DAPTOMYCIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"},
+                                "1-6 years (Young child)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"},
+                                "6-12 years (Older child)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"}
+                        },
+                        "unit": "mg/kg",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "Statins": "Increased rhabdomyolysis risk",
+                                "Tobramycin": "Increased CPK"
+                        },
+                        "notes": "For MRSA and VRE. Monitor CPK weekly. Not for pulmonary infections."
+                },
+
+                "CASPOFUNGIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 25, "max_dose": 50, "max_total": 70, "frequency": "Every 24 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 25, "max_dose": 50, "max_total": 70, "frequency": "Every 24 hours"},
+                                "1-6 years (Young child)": {"min_dose": 25, "max_dose": 50, "max_total": 70, "frequency": "Every 24 hours"},
+                                "6-12 years (Older child)": {"min_dose": 25, "max_dose": 50, "max_total": 70, "frequency": "Every 24 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 50, "max_dose": 70, "max_total": 70, "frequency": "Every 24 hours"}
+                        },
+                        "unit": "mg/m²",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "Cyclosporine": "Increased caspofungin levels",
+                                "Tacrolimus": "Decreased tacrolimus levels"
+                        },
+                        "notes": "For invasive candidiasis and aspergillosis. Loading dose required."
+                },
+
+                "MICAFUNGIN": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"},
+                                "1-6 years (Young child)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"},
+                                "6-12 years (Older child)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"}
+                        },
+                        "unit": "mg/kg",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "Sirolimus": "Increased levels",
+                                "Nifedipine": "Increased levels"
+                        },
+                        "notes": "For candidemia and prophylaxis. No loading dose needed."
+                },
+
+                "TRIMETHOPRIM-SULFAMETHOXAZOLE": {
+                        "age_groups": {
+                                "0-30 days (Neonate)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"},
+                                "1 month-1 year (Infant)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"},
+                                "1-6 years (Young child)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"},
+                                "6-12 years (Older child)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"},
+                                "12+ years (Adolescent)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"}
+                        },
+                        "unit": "mg/kg (TMP component)",
+                        "incompatible": ["None known"],
+                        "interactions": {
+                                "Warfarin": "Increased INR",
+                                "Phenytoin": "Increased levels",
+                                "Methotrexate": "Increased toxicity"
+                        },
+                        "notes": "For PJP prophylaxis and treatment. Monitor CBC for myelosuppression."
+                }
         }
         
-        # Title
-        ttk.Label(frame, text="Antibiotics Calculator", font=('Helvetica', 16, 'bold')).grid(row=0, column=0, columnspan=6, pady=10)
+        # UI Elements
+        ttk.Label(scrollable_frame, text="Pediatric Oncology Antibiotics Calculator", 
+                 font=('Helvetica', 16, 'bold')).grid(row=0, column=0, columnspan=6, pady=10)
         
-        # Single weight input for all antibiotics
-        weight_frame = ttk.Frame(frame)
-        weight_frame.grid(row=1, column=0, columnspan=6, pady=(0,20), sticky="ew")
+        # Patient details frame
+        input_frame = ttk.Frame(scrollable_frame)
+        input_frame.grid(row=1, column=0, columnspan=6, pady=10, sticky="ew")
         
+        # Weight input
         self.antibiotics_weight_var = tk.StringVar()
-        ttk.Label(weight_frame, text="*Patient Weight (kg):", font=('Helvetica', 10, 'bold')).grid(row=0, column=0, padx=5, sticky="e")
-        ttk.Entry(weight_frame, textvariable=self.antibiotics_weight_var, width=10, font=('Helvetica', 10)).grid(row=0, column=1, padx=5, sticky="w")
+        ttk.Label(input_frame, text="Weight (kg):").grid(row=0, column=0, padx=5)
+        ttk.Entry(input_frame, textvariable=self.antibiotics_weight_var, width=8).grid(row=0, column=1, padx=5)
         
-        # Instructions
-        ttk.Label(frame, text="Select up to 5 antibiotics. Dose fields are editable.", 
-                 font=('Helvetica', 10)).grid(row=2, column=0, columnspan=6, pady=(0,20))
+        # Age group selection
+        self.age_group_var = tk.StringVar()
+        ttk.Label(input_frame, text="Age Group:").grid(row=0, column=2, padx=5)
+        age_combo = ttk.Combobox(input_frame, textvariable=self.age_group_var, 
+                                values=self.age_groups, state="readonly", width=25)
+        age_combo.grid(row=0, column=3, padx=5)
         
-        # Create frames for each antibiotic calculation
+        # Antibiotic selection frames
         self.antibiotic_frames = []
-        self.antibiotic_vars = []
-        
         for i in range(5):
-            # Frame for each antibiotic
-            abx_frame = ttk.LabelFrame(frame, text=f"Antibiotic {i+1}", padding=(10,5))
-            abx_frame.grid(row=3+i*5, column=0, columnspan=6, sticky="ew", padx=5, pady=5)
-            self.antibiotic_frames.append(abx_frame)
-            
-            # Variables for this antibiotic
-            var_dict = {
-                "drug_var": tk.StringVar(),
-                "dose_var": tk.StringVar(),
-                "result_var": tk.StringVar(),
-                "result_label": None,
-                "max_reached": tk.BooleanVar(value=False),
-                "default_dose": tk.StringVar()  # To store the default dose
-            }
-            self.antibiotic_vars.append(var_dict)
+            abx_frame = ttk.LabelFrame(scrollable_frame, text=f"Antibiotic {i+1}")
+            abx_frame.grid(row=2+i, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
             
             # Drug selection
-            ttk.Label(abx_frame, text="*Drug:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-            drug_combo = ttk.Combobox(abx_frame, textvariable=var_dict["drug_var"], 
+            drug_var = tk.StringVar()
+            drug_combo = ttk.Combobox(abx_frame, textvariable=drug_var, 
                                      values=sorted(self.antibiotics_data.keys()), 
-                                     state="readonly", width=20)
-            drug_combo.grid(row=0, column=1, padx=5, pady=5, sticky="w")
-            drug_combo.bind("<<ComboboxSelected>>", lambda e, idx=i: self.update_antibiotic_info(idx))
+                                     state="readonly", width=25)
+            drug_combo.grid(row=0, column=0, padx=5, pady=2)
             
-            # Editable dose field (shows default but can be changed)
-            ttk.Label(abx_frame, text="Dose (mg/kg):").grid(row=0, column=2, padx=5, pady=5, sticky="e")
-            dose_entry = ttk.Entry(abx_frame, textvariable=var_dict["dose_var"], width=10)
-            dose_entry.grid(row=0, column=3, padx=5, pady=5, sticky="w")
+            # Dose information
+            dose_frame = ttk.Frame(abx_frame)
+            dose_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
             
-            # Information display area (same as before)
-            info_frame = ttk.Frame(abx_frame)
-            info_frame.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(5,0))
+            ttk.Label(dose_frame, text="Dose Range:").grid(row=0, column=0, padx=2)
+            dose_range_var = tk.StringVar()
+            ttk.Label(dose_frame, textvariable=dose_range_var, width=20).grid(row=0, column=1, padx=2)
             
-            ttk.Label(info_frame, text="Dose Range:").grid(row=0, column=0, padx=5, sticky="e")
-            ttk.Label(info_frame, text="", width=20, anchor="w").grid(row=0, column=1, padx=5, sticky="w")
+            ttk.Label(dose_frame, text="Frequency:").grid(row=0, column=2, padx=2)
+            frequency_var = tk.StringVar()
+            ttk.Label(dose_frame, textvariable=frequency_var, width=15).grid(row=0, column=3, padx=2)
             
-            ttk.Label(info_frame, text="Frequency:").grid(row=0, column=2, padx=5, sticky="e")
-            ttk.Label(info_frame, text="", width=15, anchor="w").grid(row=0, column=3, padx=5, sticky="w")
+            # Dose input
+            ttk.Label(abx_frame, text="Enter Dose:").grid(row=2, column=0, padx=5)
+            dose_var = tk.StringVar()
+            dose_entry = ttk.Entry(abx_frame, textvariable=dose_var, width=8)
+            dose_entry.grid(row=2, column=1, padx=5)
             
-            ttk.Label(info_frame, text="Per:").grid(row=0, column=4, padx=5, sticky="e")
-            ttk.Label(info_frame, text="", width=10, anchor="w").grid(row=0, column=5, padx=5, sticky="w")
+            # Calculation results
+            result_var = tk.StringVar()
+            ttk.Label(abx_frame, textvariable=result_var, width=25).grid(row=2, column=2, padx=5)
             
-            ttk.Label(info_frame, text="Incompatible Solutions:").grid(row=1, column=0, padx=5, sticky="e")
-            ttk.Label(info_frame, text="", wraplength=300, anchor="w").grid(row=1, column=1, columnspan=3, padx=5, sticky="w")
+            # Store variables
+            self.antibiotic_frames.append({
+                "frame": abx_frame,
+                "drug_var": drug_var,
+                "dose_range_var": dose_range_var,
+                "frequency_var": frequency_var,
+                "dose_var": dose_var,
+                "result_var": result_var
+            })
             
-            ttk.Label(info_frame, text="Interactions:").grid(row=2, column=0, padx=5, sticky="ne")
-            ttk.Label(info_frame, text="", wraplength=400, anchor="w").grid(row=2, column=1, columnspan=5, padx=5, sticky="w")
-            
-            ttk.Label(info_frame, text="Notes:").grid(row=3, column=0, padx=5, sticky="ne")
-            ttk.Label(info_frame, text="", wraplength=400, anchor="w").grid(row=3, column=1, columnspan=5, padx=5, sticky="w")
-            
-            # Result
-            result_frame = ttk.Frame(abx_frame)
-            result_frame.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(5,0))
-            
-            ttk.Label(result_frame, text="Calculated Dose:").grid(row=0, column=0, padx=5, sticky="e")
-            result_label = ttk.Label(result_frame, textvariable=var_dict["result_var"], 
-                                   font=('Helvetica', 10, 'bold'))
-            result_label.grid(row=0, column=1, padx=5, sticky="w")
-            var_dict["result_label"] = result_label
-            
-            # Separator
-            ttk.Separator(abx_frame, orient='horizontal').grid(row=3, column=0, columnspan=6, sticky="ew", pady=5)
+            # Bind drug selection to update fields
+            drug_var.trace_add("write", lambda *args, i=i: self.update_antibiotic_fields(i))
         
-        # Button frame on the side
-        button_frame = ttk.Frame(frame)
-        button_frame.grid(row=3+5*5, column=4, columnspan=2, sticky="ne", padx=10, pady=20)
+        # Interaction panel
+        interaction_frame = ttk.LabelFrame(scrollable_frame, text="Drug Interactions & Warnings")
+        interaction_frame.grid(row=2, column=4, rowspan=5, sticky="nsew", padx=10, pady=5)
         
-        # Calculate button
-        calc_btn = ttk.Button(button_frame, text="Calculate All", 
-                            command=self.calculate_all_antibiotics,
-                            style='Large.TButton', width=15)
-        calc_btn.pack(pady=10, fill=tk.X)
+        self.interaction_text = tk.Text(interaction_frame, wrap=tk.WORD, width=50, height=25)
+        self.interaction_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Clear button
-        clear_btn = ttk.Button(button_frame, text="Clear All", 
-                             command=self.clear_all_antibiotics,
-                             style='TButton', width=15)
-        clear_btn.pack(pady=10, fill=tk.X)
+        # Buttons
+        btn_frame = ttk.Frame(scrollable_frame)
+        btn_frame.grid(row=7, column=0, columnspan=6, pady=10)
         
-        # Back to menu button
-        back_btn = ttk.Button(button_frame, text="Back to Menu", 
-                             command=self.main_menu,
-                             style='TButton', width=15)
-        back_btn.pack(pady=10, fill=tk.X)
-        
-        # Interaction check frame
-        interaction_frame = ttk.LabelFrame(frame, text="Antibiotic Interactions Check", padding=10)
-        interaction_frame.grid(row=3+5*5, column=0, columnspan=4, sticky="nsew", padx=5, pady=10)
-        
-        self.interaction_text = tk.Text(interaction_frame, height=8, width=60, wrap=tk.WORD,
-                                      state=tk.DISABLED, font=('Helvetica', 9))
-        self.interaction_text.pack(fill=tk.BOTH, expand=True)
+        ttk.Button(btn_frame, text="Calculate", command=self.calculate_antibiotics).grid(row=0, column=0, padx=5)
+        ttk.Button(btn_frame, text="Clear", command=self.clear_antibiotics).grid(row=0, column=1, padx=5)
         
         # Configure grid weights
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=1)
-        frame.columnconfigure(2, weight=1)
-        frame.columnconfigure(3, weight=1)
-        frame.columnconfigure(4, weight=1)
-        frame.columnconfigure(5, weight=1)
-        
-        # Create a custom style for the large button
-        style = ttk.Style()
-        style.configure('Large.TButton', font=('Helvetica', 12, 'bold'), padding=10)
+        scrollable_frame.columnconfigure(4, weight=1)
+        scrollable_frame.rowconfigure(6, weight=1)
 
-    def update_antibiotic_info(self, index):
-        """Update the information display when an antibiotic is selected"""
-        drug = self.antibiotic_vars[index]["drug_var"].get()
+    def update_antibiotic_fields(self, index):
+        """Update fields when antibiotic is selected"""
+        abx = self.antibiotic_frames[index]
+        drug = abx["drug_var"].get()
+        age_group = self.age_group_var.get()
         
-        if drug in self.antibiotics_data:
-            data = self.antibiotics_data[drug]
-            frame = self.antibiotic_frames[index]
+        if drug and age_group:
+            data = self.antibiotics_data[drug]["age_groups"][age_group]
+            unit = self.antibiotics_data[drug]["unit"]
             
-            # Update the information labels
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=0, column=1)[0].config(text=data["dose_range"])
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=0, column=3)[0].config(text=data["frequency"])
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=0, column=5)[0].config(
-                text="DAY" if data["per_day"] else "DOSE")
+            # Update dose range and frequency
+            abx["dose_range_var"].set(f"{data['min_dose']}-{data['max_dose']} {unit}/kg")
+            abx["frequency_var"].set(data["frequency"])
             
-            # Set default dose to max recommended dose (editable)
-            self.antibiotic_vars[index]["dose_var"].set(str(data["max_dose"]))
-            self.antibiotic_vars[index]["default_dose"].set(str(data["max_dose"]))
-            
-            # Update incompatible solutions
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=1, column=1)[0].config(
-                text=", ".join(data["incompatible_solutions"]))
-            
-            # Update interactions
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=2, column=1)[0].config(text=data["interactions"])
-            
-            # Update notes
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=3, column=1)[0].config(text=data["notes"])
-            
-            # Clear any previous result
-            self.antibiotic_vars[index]["result_var"].set("")
-            self.antibiotic_vars[index]["max_reached"].set(False)
-            self.antibiotic_vars[index]["result_label"].config(foreground='black')
-            
-            # Check for interactions
-            self.check_antibiotic_interactions()
+            # Auto-fill with max dose
+            abx["dose_var"].set(data["max_dose"])
 
-    def calculate_all_antibiotics(self):
-        """Calculate doses for all antibiotics using the single weight value"""
-        weight_str = self.antibiotics_weight_var.get()
-        
-        if not weight_str:
-            messagebox.showerror("Error", "Please enter patient weight first")
-            return
-            
+    def calculate_antibiotics(self):
+        """Calculate doses and check interactions"""
         try:
-            weight = float(weight_str)
-            if weight <= 0:
-                raise ValueError("Weight must be positive")
+            weight = float(self.antibiotics_weight_var.get())
+            age_group = self.age_group_var.get()
+            
+            for abx in self.antibiotic_frames:
+                drug = abx["drug_var"].get()
+                if not drug or not age_group:
+                    continue
                 
-            for i in range(5):
-                self.calculate_single_antibiotic(i, weight)
-            
-            # Check interactions after calculation
-            self.check_antibiotic_interactions()
-            
-        except ValueError as e:
-            messagebox.showerror("Error", f"Invalid weight value: {str(e)}")
-
-    def calculate_single_antibiotic(self, index, weight=None):
-        """Calculate dose for a single antibiotic"""
-        if weight is None:
-            weight_str = self.antibiotics_weight_var.get()
-            if not weight_str:
-                return
-            try:
-                weight = float(weight_str)
-            except ValueError:
-                return
+                dose_data = self.antibiotics_data[drug]["age_groups"][age_group]
+                unit = self.antibiotics_data[drug]["unit"]
                 
-        drug = self.antibiotic_vars[index]["drug_var"].get()
-        dose_str = self.antibiotic_vars[index]["dose_var"].get()
-        
-        if not drug:
-            return  # Skip if no drug selected
-            
-        try:
-            dose = float(dose_str)
-            data = self.antibiotics_data[drug]
-            
-            # Warn if dose is outside recommended range
-            if dose < data["min_dose"] or dose > data["max_dose"]:
-                messagebox.showwarning("Warning", 
-                                     f"Dose for {drug} is outside recommended range ({data['dose_range']})")
+                try:
+                    dose = float(abx["dose_var"].get())
+                except ValueError:
+                    dose = dose_data["max_dose"]  # Use max dose if invalid input
                 
-            # Calculate total dose
-            calculated_dose = dose * weight
+                # Calculate total dose
+                calculated_dose = weight * dose
+                if calculated_dose > dose_data["max_total"]:
+                    calculated_dose = dose_data["max_total"]
+                
+                # Update results
+                abx["result_var"].set(f"Total: {calculated_dose:.1f} {unit}\n(Max: {dose_data['max_total']} {unit})")
             
-            # Check against max total dose
-            max_reached = calculated_dose > data["max_total_dose"]
-            if max_reached:
-                calculated_dose = data["max_total_dose"]
-                self.antibiotic_vars[index]["max_reached"].set(True)
-                self.antibiotic_vars[index]["result_label"].config(foreground='red')
-            else:
-                self.antibiotic_vars[index]["max_reached"].set(False)
-                self.antibiotic_vars[index]["result_label"].config(foreground='black')
-            
-            # Format the result
-            per_text = "per day" if data["per_day"] else "per dose"
-            max_warning = " (MAX DOSE REACHED!)" if max_reached else ""
-            result_text = f"{calculated_dose:.2f} {data['unit']} {per_text}{max_warning}"
-            
-            self.antibiotic_vars[index]["result_var"].set(result_text)
+            self.check_interactions()
             
         except ValueError:
-            messagebox.showerror("Error", f"Invalid dose value for {drug}")
+            messagebox.showerror("Error", "Please enter valid weight and select age group")
+        except KeyError:
+            messagebox.showerror("Error", "Please select valid age group for all medications")
 
-    def check_antibiotic_interactions(self):
-        """Check for interactions between selected antibiotics"""
-        selected_drugs = []
-        interaction_text = ""
+    def check_interactions(self):
+        """Check for drug-drug interactions and incompatibilities"""
+        selected_drugs = [abx["drug_var"].get() for abx in self.antibiotic_frames if abx["drug_var"].get()]
+        interactions = []
+        incompatibilities = set()
+        notes = set()
         
-        # Get all selected drugs
-        for i in range(5):
-            drug = self.antibiotic_vars[i]["drug_var"].get()
-            if drug and drug in self.antibiotics_data:
-                selected_drugs.append(drug)
-        
-        # Check for known interactions
-        if len(selected_drugs) >= 2:
-            interaction_text = "Potential Interactions:\n"
+        # Check pairwise interactions
+        for i, drug in enumerate(selected_drugs):
+            # Add drug-specific notes
+            notes.add(f"{drug}: {self.antibiotics_data[drug]['notes']}")
             
-            # Check each pair of drugs
-            for i in range(len(selected_drugs)):
-                for j in range(i+1, len(selected_drugs)):
-                    drug1 = selected_drugs[i]
-                    drug2 = selected_drugs[j]
-                    
-                    # Get interactions for drug1
-                    interactions1 = self.antibiotics_data[drug1]["interactions"]
-                    
-                    # Check if drug2 is mentioned in drug1's interactions
-                    if drug2.lower() in interactions1.lower():
-                        interaction_text += f"- {drug1} + {drug2}: {interactions1}\n"
-                    
-                    # Also check the reverse
-                    interactions2 = self.antibiotics_data[drug2]["interactions"]
-                    if drug1.lower() in interactions2.lower():
-                        interaction_text += f"- {drug2} + {drug1}: {interactions2}\n"
+            # Check incompatibilities
+            incompatibilities.update(self.antibiotics_data[drug]["incompatible"])
             
-            if interaction_text == "Potential Interactions:\n":
-                interaction_text += "No significant interactions detected between selected antibiotics."
-        
-        # Update the interaction text widget
-        self.interaction_text.config(state=tk.NORMAL)
-        self.interaction_text.delete(1.0, tk.END)
-        self.interaction_text.insert(tk.END, interaction_text)
-        self.interaction_text.config(state=tk.DISABLED)
+            for other_drug in selected_drugs[i+1:]:
+                # Drug-drug interactions
+                common_interactions = set(self.antibiotics_data[drug]["interactions"].keys()) & \
+                                    set(self.antibiotics_data[other_drug]["interactions"].keys())
+                
+                for interaction in common_interactions:
+                    interactions.append(f"⚠️ {drug} + {other_drug}: {self.antibiotics_data[drug]['interactions'][interaction]}")
 
-    def clear_all_antibiotics(self):
-        """Clear all antibiotic calculation fields"""
-        for i in range(5):
-            self.antibiotic_vars[i]["drug_var"].set("")
-            self.antibiotic_vars[i]["dose_var"].set("")
-            self.antibiotic_vars[i]["result_var"].set("")
-            self.antibiotic_vars[i]["max_reached"].set(False)
-            self.antibiotic_vars[i]["result_label"].config(foreground='black')
-            
-            # Clear information labels
-            frame = self.antibiotic_frames[i]
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=0, column=1)[0].config(text="")
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=0, column=3)[0].config(text="")
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=0, column=5)[0].config(text="")
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=1, column=1)[0].config(text="")
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=2, column=1)[0].config(text="")
-            frame.grid_slaves(row=1, column=0)[0].grid_slaves(row=3, column=1)[0].config(text="")
+        # Build report
+        report = []
+        if interactions:
+            report.append("🚨 DRUG INTERACTIONS:")
+            report.extend(interactions)
+            report.append("")
         
-        # Clear interaction text
-        self.interaction_text.config(state=tk.NORMAL)
+        if incompatibilities:
+            report.append("🚫 INCOMPATIBILITIES:")
+            report.extend(sorted(incompatibilities))
+            report.append("")
+        
+        if notes:
+            report.append("📝 IMPORTANT NOTES:")
+            report.extend(sorted(notes))
+        
         self.interaction_text.delete(1.0, tk.END)
-        self.interaction_text.config(state=tk.DISABLED)
+        self.interaction_text.insert(tk.END, "\n".join(report) if report else "✅ No significant interactions detected")
+
+    def clear_antibiotics(self):
+        """Clear all inputs and results"""
+        self.antibiotics_weight_var.set("")
+        self.age_group_var.set("")
+        self.interaction_text.delete(1.0, tk.END)
+        
+        for abx in self.antibiotic_frames:
+            abx["drug_var"].set("")
+            abx["dose_range_var"].set("")
+            abx["frequency_var"].set("")
+            abx["dose_var"].set("")
+            abx["result_var"].set("")
 
     def setup_bsa_calculator(self, parent):
         """Setup the BSA calculator interface"""
@@ -3235,22 +3447,192 @@ class OncologyApp:
             messagebox.showerror("Error", "Please enter valid numeric values")
 
     def setup_dosage_calculator(self, parent):
-        """Setup the dosage calculator interface"""
+        """Setup the enhanced dosage calculator interface with comprehensive drug information"""
         frame = ttk.Frame(parent, padding="10 10 10 10", style='TFrame')
         frame.pack(fill=tk.BOTH, expand=True)
         
-        # Chemotherapy drugs data (drug: [dose_per_kg, max_dose, unit])
+        # Enhanced chemotherapy drugs data with detailed interactions and compatibility info
         self.chemo_drugs = {
-            "Vincristine": [1.5, 2, "mg"],
-            "Dactinomycin": [0.015, 2.5, "mg"],
-            "Doxorubicin": [30, 60, "mg/m²"],
-            "Cyclophosphamide": [1000, 2000, "mg/m²"],
-            "Methotrexate": [12, 15, "g/m²"],
-            "Cisplatin": [100, 120, "mg/m²"],
-            "Carboplatin": [600, 800, "mg/m²"],
-            "Etoposide": [100, 500, "mg/m²"],
-            "Ifosfamide": [1800, 3000, "mg/m²"],
-            "Cytarabine": [100, 300, "mg/m²"]
+            "Vincristine": {
+                "dose": [1.5, 2, "mg"],
+                "side_effects": ["Neurotoxicity", "Constipation", "Peripheral neuropathy", "SIADH", "Jaw pain"],
+                "compatible_fluids": ["NS", "D5W"],
+                "incompatible_fluids": {
+                    "Bicarbonate solutions": "pH >7 causes precipitation",
+                    "Furosemide": "Forms immediate precipitate",
+                    "Ceftriaxone": "Forms insoluble complex",
+                    "Heparin": "Physical incompatibility",
+                    "Mitomycin": "Mutual inactivation"
+                },
+                "interactions": {
+                    "L-asparaginase": "Increased neurotoxicity (administer vincristine first)",
+                    "Phenytoin": "Reduces phenytoin levels by 50%",
+                    "Itraconazole": "Increased neurotoxicity risk",
+                    "Erythromycin": "Increases vincristine toxicity",
+                    "CYP3A4 inhibitors": "Increased toxicity (avoid concurrent use)"
+                },
+                "photosensitive": False,
+                "notes": "Must be administered through central line or free-flowing IV. Administer over 1-2 minutes. Severe vesicant."
+            },
+            "Dactinomycin": {
+                "dose": [0.015, 2.5, "mg"],
+                "side_effects": ["Myelosuppression", "Mucositis", "Hepatotoxicity", "Radiation recall", "Extravasation injury"],
+                "compatible_fluids": ["NS", "D5W"],
+                "incompatible_fluids": {
+                    "Dexamethasone": "Chemical degradation",
+                    "Vancomycin": "Forms haze",
+                    "Heparin": "Precipitate formation"
+                },
+                "interactions": {
+                    "Radiation therapy": "Enhanced radiation recall effect",
+                    "Live vaccines": "Avoid for 3 months post-treatment",
+                    "Phenobarbital": "Reduced dactinomycin efficacy"
+                },
+                "photosensitive": False,
+                "notes": "Severe vesicant. Administer through central line. Monitor for secondary malignancies."
+            },
+            "Doxorubicin": {
+                "dose": [30, 60, "mg/m²"],
+                "side_effects": ["Cardiotoxicity", "Myelosuppression", "Alopecia", "Radiation recall", "Red urine"],
+                "compatible_fluids": ["NS"],
+                "incompatible_fluids": {
+                    "Heparin": "Forms precipitate",
+                    "5-FU": "Chemical degradation",
+                    "Alkaline solutions": "pH instability causes degradation",
+                    "Dexamethasone": "Forms precipitate",
+                    "Ceftriaxone": "Incompatible at Y-site"
+                },
+                "interactions": {
+                    "Cyclophosphamide": "Increased cardiotoxicity risk",
+                    "Verapamil": "Increased intracellular concentration",
+                    "Trastuzumab": "Severe cardiac dysfunction risk",
+                    "Paclitaxel": "Altered doxorubicin clearance"
+                },
+                "photosensitive": False,
+                "notes": "Cardiac monitoring required (MUGA/ECHO). Cumulative lifetime dose limit 550mg/m². Severe vesicant."
+            },
+            "Cyclophosphamide": {
+                "dose": [1000, 2000, "mg/m²"],
+                "side_effects": ["Hemorrhagic cystitis", "Myelosuppression", "Nausea", "SIADH", "Cardiotoxicity"],
+                "compatible_fluids": ["NS", "D5W"],
+                "incompatible_fluids": {
+                    "Amphotericin B": "Increased nephrotoxicity",
+                    "Chloramphenicol": "Reduced efficacy"
+                },
+                "interactions": {
+                    "Allopurinol": "Increased myelosuppression",
+                    "Succinylcholine": "Prolonged neuromuscular blockade",
+                    "Warfarin": "Increased anticoagulant effect",
+                    "Digoxin": "Reduced absorption"
+                },
+                "photosensitive": False,
+                "notes": "Mesna protection required for doses >1000mg/m². Aggressive hydration (2000mL/m²/day)."
+            },
+            "Methotrexate": {
+                "dose": [12, 15, "g/m²"],
+                "side_effects": ["Myelosuppression", "Mucositis", "Nephrotoxicity", "Hepatotoxicity", "Neurotoxicity"],
+                "compatible_fluids": ["D5W"],
+                "incompatible_fluids": {
+                    "NS": "Increased precipitation risk in chloride solutions",
+                    "Lactated Ringer's": "Calcium forms complex with MTX",
+                    "Proton pump inhibitors": "Reduced renal clearance",
+                    "Penicillins": "Increased MTX toxicity",
+                    "NSAIDs": "Competitive tubular secretion"
+                },
+                "interactions": {
+                    "NSAIDs": "Increased MTX toxicity (avoid)",
+                    "Probenecid": "Reduced renal excretion",
+                    "Sulfonamides": "Increased myelosuppression",
+                    "Theophylline": "Increased theophylline levels"
+                },
+                "photosensitive": True,
+                "notes": "Leucovorin rescue required for high-dose therapy. Urine pH monitoring (maintain >7)."
+            },
+            "Cisplatin": {
+                "dose": [100, 120, "mg/m²"],
+                "side_effects": ["Nephrotoxicity", "Ototoxicity", "Neuropathy", "Hypomagnesemia", "Anaphylaxis"],
+                "compatible_fluids": ["NS"],
+                "incompatible_fluids": {
+                    "D5W": "Decreased stability in dextrose",
+                    "Aluminum-containing solutions": "Forms black precipitate",
+                    "Bicarbonate": "Forms precipitate",
+                    "Paclitaxel": "Incompatible at Y-site"
+                },
+                "interactions": {
+                    "Aminoglycosides": "Increased nephrotoxicity (avoid)",
+                    "Phenytoin": "Reduced phenytoin absorption",
+                    "Diuretics": "Increased ototoxicity risk",
+                    "Live vaccines": "Avoid for 3 months"
+                },
+                "photosensitive": False,
+                "notes": "Aggressive hydration required (3L/day). Magnesium supplementation often needed. Administer over 2-6 hours."
+            },
+            "Carboplatin": {
+                "dose": [600, 800, "mg/m²"],
+                "side_effects": ["Myelosuppression", "Nausea", "Peripheral neuropathy", "Ototoxicity", "Hypersensitivity"],
+                "compatible_fluids": ["D5W", "NS"],
+                "incompatible_fluids": {
+                    "Aluminum-containing solutions": "Forms precipitate",
+                    "Amifostine": "Chemical interaction"
+                },
+                "interactions": {
+                    "Nephrotoxic drugs": "Additive renal toxicity",
+                    "Live vaccines": "Avoid concurrent use",
+                    "Phenytoin": "Reduced levels"
+                },
+                "photosensitive": False,
+                "notes": "Dose based on AUC calculation preferred. Administer over 15-60 minutes."
+            },
+            "Etoposide": {
+                "dose": [100, 500, "mg/m²"],
+                "side_effects": ["Myelosuppression", "Hypotension", "Alopecia", "Anaphylaxis", "Secondary malignancies"],
+                "compatible_fluids": ["NS", "D5W"],
+                "incompatible_fluids": {
+                    "Heparin": "Forms precipitate",
+                    "Cefepime": "Physical incompatibility",
+                    "Filgrastim": "Incompatible at Y-site"
+                },
+                "interactions": {
+                    "Warfarin": "Increased anticoagulant effect",
+                    "Cyclosporine": "Increased etoposide levels",
+                    "St. John's Wort": "Reduced efficacy"
+                },
+                "photosensitive": True,
+                "notes": "Administer over 30-60 minutes to prevent hypotension. Dilute to <0.4mg/mL concentration."
+            },
+            "Ifosfamide": {
+                "dose": [1800, 3000, "mg/m²"],
+                "side_effects": ["Hemorrhagic cystitis", "Neurotoxicity", "Nephrotoxicity", "SIADH", "Cardiotoxicity"],
+                "compatible_fluids": ["D5W", "NS"],
+                "incompatible_fluids": {
+                    "Mesna": "Chemical interaction if mixed directly",
+                    "Cisplatin": "Increased neurotoxicity"
+                },
+                "interactions": {
+                    "CNS depressants": "Increased neurotoxicity risk",
+                    "Warfarin": "Increased anticoagulant effect",
+                    "Phenobarbital": "Increased metabolism"
+                },
+                "photosensitive": False,
+                "notes": "Mesna protection required. Administer over 2-24 hours. Aggressive hydration (2L/m²/day)."
+            },
+            "Cytarabine": {
+                "dose": [100, 300, "mg/m²"],
+                "side_effects": ["Myelosuppression", "Cerebellar toxicity", "Conjunctivitis", "Ara-C syndrome", "Anaphylaxis"],
+                "compatible_fluids": ["D5W", "NS"],
+                "incompatible_fluids": {
+                    "Gentamicin": "Mutual inactivation",
+                    "5-FU": "Antagonistic effect",
+                    "Heparin": "Forms precipitate"
+                },
+                "interactions": {
+                    "Digoxin": "Reduced digoxin absorption",
+                    "Live vaccines": "Avoid concurrent use",
+                    "Flucytosine": "Reduced efficacy"
+                },
+                "photosensitive": False,
+                "notes": "High-dose regimen requires steroid eye drops prophylaxis. Administer over 1-3 hours."
+            }
         }
         
         # Variables
@@ -3261,42 +3643,120 @@ class OncologyApp:
         self.bsa_var = tk.StringVar()
         self.dosage_result_var = tk.StringVar()
         
-        # Drug selection
-        ttk.Label(frame, text="Drug:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        drug_combo = ttk.Combobox(frame, textvariable=self.drug_var, 
+        # Create main container
+        main_container = ttk.Frame(frame)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Left panel - Calculator
+        left_panel = ttk.Frame(main_container, padding="5 5 5 5")
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        
+        # Right panel - Drug Info
+        right_panel = ttk.Frame(main_container, padding="5 5 5 5")
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        
+        # Calculator components
+        ttk.Label(left_panel, text="Chemotherapy Dosage Calculator", font=('Helvetica', 12, 'bold')).grid(row=0, column=0, columnspan=2, pady=5)
+        
+        ttk.Label(left_panel, text="Drug:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        drug_combo = ttk.Combobox(left_panel, textvariable=self.drug_var, 
                                 values=list(self.chemo_drugs.keys()), state="readonly")
-        drug_combo.grid(row=0, column=1, padx=5, pady=5)
-        drug_combo.bind("<<ComboboxSelected>>", self.update_drug_dosage)
+        drug_combo.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        drug_combo.bind("<<ComboboxSelected>>", self.update_drug_info)
         
-        # Dose and max dose (editable)
-        ttk.Label(frame, text="Dose per kg/m²:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        ttk.Entry(frame, textvariable=self.dose_var).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Label(left_panel, text="Dose per kg/m²:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        ttk.Entry(left_panel, textvariable=self.dose_var).grid(row=2, column=1, padx=5, pady=5, sticky="w")
         
-        ttk.Label(frame, text="Max Dose:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
-        ttk.Entry(frame, textvariable=self.max_dose_var).grid(row=2, column=1, padx=5, pady=5)
+        ttk.Label(left_panel, text="Max Dose:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        ttk.Entry(left_panel, textvariable=self.max_dose_var).grid(row=3, column=1, padx=5, pady=5, sticky="w")
         
-        # Patient parameters
-        ttk.Label(frame, text="Patient Weight (kg):").grid(row=3, column=0, padx=5, pady=5, sticky="e")
-        ttk.Entry(frame, textvariable=self.patient_weight_var).grid(row=3, column=1, padx=5, pady=5)
+        ttk.Label(left_panel, text="Patient Weight (kg):").grid(row=4, column=0, padx=5, pady=5, sticky="e")
+        ttk.Entry(left_panel, textvariable=self.patient_weight_var).grid(row=4, column=1, padx=5, pady=5, sticky="w")
         
-        ttk.Label(frame, text="BSA (m²):").grid(row=4, column=0, padx=5, pady=5, sticky="e")
-        ttk.Entry(frame, textvariable=self.bsa_var).grid(row=4, column=1, padx=5, pady=5)
+        ttk.Label(left_panel, text="BSA (m²):").grid(row=5, column=0, padx=5, pady=5, sticky="e")
+        ttk.Entry(left_panel, textvariable=self.bsa_var).grid(row=5, column=1, padx=5, pady=5, sticky="w")
         
-        # Calculate button
-        ttk.Button(frame, text="Calculate Dosage", command=self.calculate_dosage,
-                  style='Blue.TButton').grid(row=5, column=0, columnspan=2, pady=10)
+        ttk.Button(left_panel, text="Calculate Dosage", command=self.calculate_dosage,
+                  style='Blue.TButton').grid(row=6, column=0, columnspan=2, pady=10)
         
-        # Result
-        ttk.Label(frame, text="Dosage:").grid(row=6, column=0, padx=5, pady=5, sticky="e")
-        ttk.Label(frame, textvariable=self.dosage_result_var, font=('Helvetica', 12, 'bold')).grid(row=6, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(left_panel, text="Calculated Dosage:").grid(row=7, column=0, padx=5, pady=5, sticky="e")
+        ttk.Label(left_panel, textvariable=self.dosage_result_var, font=('Helvetica', 12, 'bold')).grid(row=7, column=1, padx=5, pady=5, sticky="w")
+        
+        # Drug Info components
+        info_label = ttk.Label(right_panel, text="Drug Information", font=('Helvetica', 14, 'bold'))
+        info_label.pack(pady=5)
+        
+        self.info_text = tk.Text(right_panel, wrap=tk.WORD, width=70, height=25, padx=10, pady=10,
+                              font=('Helvetica', 10), bg='white', fg='black')
+        scrollbar = ttk.Scrollbar(right_panel, command=self.info_text.yview)
+        self.info_text.configure(yscrollcommand=scrollbar.set)
+        
+        self.info_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Initialize with empty info
+        self.update_drug_info()
 
-    def update_drug_dosage(self, event=None):
-        """Update dose and max dose fields when drug is selected"""
+    def update_drug_info(self, event=None):
+        """Update all drug information fields when drug is selected"""
         drug = self.drug_var.get()
-        if drug in self.chemo_drugs:
-            dose, max_dose, unit = self.chemo_drugs[drug]
-            self.dose_var.set(str(dose))
-            self.max_dose_var.set(str(max_dose))
+        self.info_text.config(state=tk.NORMAL)
+        self.info_text.delete(1.0, tk.END)
+        
+        if not drug or drug not in self.chemo_drugs:
+            self.info_text.insert(tk.END, "Please select a chemotherapy drug from the dropdown to view detailed information.")
+            self.info_text.config(state=tk.DISABLED)
+            return
+            
+        data = self.chemo_drugs[drug]
+        
+        # Update dosage fields
+        dose, max_dose, unit = data["dose"]
+        self.dose_var.set(str(dose))
+        self.max_dose_var.set(str(max_dose))
+        
+        # Format drug information with rich formatting
+        self.info_text.tag_configure("title", font=('Helvetica', 14, 'bold'))
+        self.info_text.tag_configure("header", font=('Helvetica', 12, 'bold'))
+        self.info_text.tag_configure("bold", font=('Helvetica', 10, 'bold'))
+        self.info_text.tag_configure("warning", foreground="red")
+        
+        self.info_text.insert(tk.END, f"{drug.upper()}\n", "title")
+        self.info_text.insert(tk.END, "\nSTANDARD DOSING\n", "header")
+        self.info_text.insert(tk.END, f"Dose: {dose} {unit}/kg/m²\n", "bold")
+        self.info_text.insert(tk.END, f"Max Dose: {max_dose} {unit}\n\n")
+        
+        self.info_text.insert(tk.END, "SIDE EFFECTS\n", "header")
+        for effect in data["side_effects"]:
+            self.info_text.insert(tk.END, f"• {effect}\n")
+        
+        self.info_text.insert(tk.END, "\nCOMPATIBLE FLUIDS\n", "header")
+        for fluid in data["compatible_fluids"]:
+            self.info_text.insert(tk.END, f"• {fluid}\n")
+        
+        self.info_text.insert(tk.END, "\nINCOMPATIBILITIES\n", "header")
+        if data["incompatible_fluids"]:
+            for fluid, reason in data["incompatible_fluids"].items():
+                self.info_text.insert(tk.END, f"• {fluid}: ", "bold")
+                self.info_text.insert(tk.END, f"{reason}\n")
+        else:
+            self.info_text.insert(tk.END, "• No significant incompatibilities\n")
+        
+        self.info_text.insert(tk.END, "\nDRUG INTERACTIONS\n", "header")
+        if data["interactions"]:
+            for drug_name, interaction in data["interactions"].items():
+                self.info_text.insert(tk.END, f"• {drug_name}: ", "bold")
+                self.info_text.insert(tk.END, f"{interaction}\n")
+        else:
+            self.info_text.insert(tk.END, "• No major interactions\n")
+        
+        self.info_text.insert(tk.END, "\nPHOTOSENSITIVITY\n", "header")
+        self.info_text.insert(tk.END, f"{'Yes' if data['photosensitive'] else 'No'}\n")
+        
+        self.info_text.insert(tk.END, "\nSPECIAL NOTES\n", "header")
+        self.info_text.insert(tk.END, f"{data['notes']}\n", "bold")
+        
+        self.info_text.config(state=tk.DISABLED)
 
     def calculate_dosage(self):
         """Calculate chemotherapy dosage with weight and BSA considerations"""
@@ -3308,7 +3768,7 @@ class OncologyApp:
             bsa = float(self.bsa_var.get())
             
             if drug in self.chemo_drugs:
-                unit = self.chemo_drugs[drug][2]
+                unit = self.chemo_drugs[drug]["dose"][2]
                 
                 # Calculate based on unit
                 if unit.endswith("/m²"):
@@ -3331,33 +3791,7 @@ class OncologyApp:
                 messagebox.showerror("Error", "Please select a valid drug")
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numeric values")
-
-    def create_scrollable_frame(self, parent):
-        """Create a scrollable frame within the given parent"""
-        container = ttk.Frame(parent)
-        canvas = tk.Canvas(container, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        container.pack(fill="both", expand=True)
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Enable mouse wheel scrolling
-        def _on_mouse_wheel(event):
-            canvas.yview_scroll(-1 * (event.delta // 120), "units")
-        
-        canvas.bind_all("<MouseWheel>", _on_mouse_wheel)
-        
-        return scrollable_frame
-    
+                
     def add_patient(self):
         """Display the add patient form with scrollable fields"""
         if self.users[self.current_user]["role"] not in ["admin", "editor"]:
@@ -4712,9 +5146,6 @@ class OncologyApp:
         # Button frame at bottom
         btn_frame = ttk.Frame(right_frame, style='TFrame')
         btn_frame.pack(fill=tk.X, padx=20, pady=10)
-
-        ttk.Button(btn_frame, text="Export to Excel", command=self.export_statistics,
-                  style='Green.TButton').pack(side=tk.LEFT, padx=10)
         
         ttk.Button(btn_frame, text="Print Report", command=self.print_statistics_report,
                   style='Yellow.TButton').pack(side=tk.LEFT, padx=10)
@@ -5445,92 +5876,9 @@ class OncologyApp:
 
         # Store figure for export/print
         self.current_figures = [fig]
-
-    def export_statistics(self):
-        """Export the current statistics to Excel with graphs"""
-        if not hasattr(self, 'analysis_var'):
-            messagebox.showerror("Error", "No analysis to export")
-            return
-
-        analysis_type = self.analysis_var.get()
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-            title=f"Save {analysis_type} As"
-        )
-        if not file_path:
-            return
-
-        try:
-            # Get filtered data
-            filtered_data = self.apply_statistics_filters()
             
-            # Create a Pandas Excel writer
-            with pd.ExcelWriter(file_path, engine='xlsxwriter') as writer:
-                # Write raw data sheet
-                df = pd.DataFrame(filtered_data)
-                df.to_excel(writer, sheet_name="Patient Data", index=False)
-                
-                # Create analysis sheet
-                workbook = writer.book
-                worksheet = workbook.add_worksheet(analysis_type[:31])
-                
-                # Add some analysis text
-                bold = workbook.add_format({'bold': True})
-                
-                worksheet.write(0, 0, f"{analysis_type} Analysis", bold)
-                worksheet.write(1, 0, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                
-                # Add basic statistics
-                if analysis_type == "Malignancy Distribution":
-                    malignancy_counts = defaultdict(int)
-                    for patient in filtered_data:
-                        malignancy = patient.get("MALIGNANCY", "Unknown")
-                        malignancy_counts[malignancy] += 1
-                    
-                    worksheet.write(3, 0, "Malignancy", bold)
-                    worksheet.write(3, 1, "Count", bold)
-                    worksheet.write(3, 2, "Percentage", bold)
-                    
-                    row = 4
-                    total = sum(malignancy_counts.values())
-                    for malignancy, count in sorted(malignancy_counts.items(), key=lambda x: x[1], reverse=True):
-                        worksheet.write(row, 0, malignancy)
-                        worksheet.write(row, 1, count)
-                        worksheet.write(row, 2, f"{(count/total)*100:.1f}%")
-                        row += 1
-                
-                # Add more analysis types as needed...
-                
-                # Add matplotlib figures to Excel
-                if hasattr(self, 'current_figures'):
-                    for i, fig in enumerate(self.current_figures, start=1):
-                        # Save figure to a temporary image file
-                        temp_img = f"temp_fig_{i}.png"
-                        fig.savefig(temp_img, dpi=300, bbox_inches='tight')
-                        
-                        # Insert image into Excel
-                        worksheet.insert_image(f'D{row + (i-1)*20}', temp_img)
-                        
-                        # Remove temporary image
-                        os.remove(temp_img)
-            
-            messagebox.showinfo("Success", f"Statistics exported to {file_path}")
-            
-            # Upload to Google Drive if available
-            if self.drive.initialized:
-                self.executor.submit(
-                    self.drive.upload_file, 
-                    file_path, 
-                    os.path.basename(file_path), 
-                    self.drive.app_folder_id
-                )
-                
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to export statistics: {str(e)}")
-
     def print_statistics_report(self):
-        """Print the current statistics report with graphs"""
+        """Create a Word document with the current statistics report"""
         if not hasattr(self, 'analysis_var'):
             messagebox.showerror("Error", "No analysis to print")
             return
@@ -5582,29 +5930,17 @@ class OncologyApp:
                     # Remove temporary image
                     os.remove(temp_img)
             
-            # Save to temporary file and print
+            # Save to temporary file
             temp_file = "temp_statistics_report.docx"
             doc.save(temp_file)
             
-            try:
-                os.startfile(temp_file, "print")
-                messagebox.showinfo("Print", "Report sent to printer")
-            except Exception as e:
-                messagebox.showerror("Print Error", f"Could not print document: {str(e)}")
-            finally:
-                # Clean up after printing
-                def delete_temp_file():
-                    try:
-                        os.remove(temp_file)
-                    except:
-                        pass
-                
-                # Schedule file deletion after a delay
-                self.root.after(5000, delete_temp_file)
-                
+            # Open the document for the user to review and save
+            os.startfile(temp_file)
+            messagebox.showinfo("Document Created", "Statistics report has been created. Please review and save it as needed.")
+            
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate report: {str(e)}")
-
+                        
     def manage_users(self):
         """Manage user accounts"""
         if self.current_user != "mej.esam" and self.users[self.current_user]["role"] != "admin":
