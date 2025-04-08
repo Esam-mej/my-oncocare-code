@@ -36,6 +36,32 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from googleapiclient.errors import HttpError
 import subprocess
 import configparser
+from tkinter import simpledialog
+
+# Path to the JSON file
+DROPDOWN_FILE = 'dropdown_lists.json'
+
+def load_dropdown_lists():
+    if not os.path.exists(DROPDOWN_FILE):
+        return {}
+    try:
+        with open(DROPDOWN_FILE, 'r') as file:
+            return json.load(file)
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"Error loading dropdown lists: {e}")
+        return {}(file)
+
+def save_dropdown_lists(data):
+    with open(DROPDOWN_FILE, 'w') as file:
+        json.dump(data, file, indent=4)
+
+def validate_dropdown_structure(data):
+    if not isinstance(data, dict):
+        return False
+    for key, value in data.items():
+        if not isinstance(value, list):
+            return False
+    return True
 
 def get_resource_path(relative_path):
     """Get absolute path to resource, works for dev and for PyInstaller"""
@@ -49,46 +75,46 @@ def get_resource_path(relative_path):
 
 # Constants
 LAB_RANGES = {
-    # Hematology
-    "HB": {"normal_range": "11.5-15.5 g/dL", "critical_low": "<7", "critical_high": ">20"},
-    "PLT": {"normal_range": "150-450 x10³/μL", "critical_low": "<20", "critical_high": ">1000"},
-"WBC": {"normal_range": "4.5-13.5 x10³/μL", "critical_low": "<1", "critical_high": ">30"},
-"NEUTROPHILS": {"normal_range": "1.5-8.5 x10³/μL", "critical_low": "<0.5", "critical_high": ">15"},
-"LYMPHOCYTES": {"normal_range": "1.5-7.0 x10³/μL", "critical_low": "<0.5", "critical_high": ">10"},
-"HCT": {"normal_range": "35-45%", "critical_low": "<20", "critical_high": ">60"},
+# Hematology
+"HB": {"normal_range": "11.5-15.5", "critical_low": "<7", "critical_high": ">20"},
+"PLT": {"normal_range": "150-450", "critical_low": "<20", "critical_high": ">1000"},
+"WBC": {"normal_range": "4.5-13.5", "critical_low": "<1", "critical_high": ">30"},
+"NEUTROPHILS": {"normal_range": "1.5-8.5", "critical_low": "<0.5", "critical_high": ">15"},
+"LYMPHOCYTES": {"normal_range": "1.5-7.0", "critical_low": "<0.5", "critical_high": ">10"},
+"HCT": {"normal_range": "35-45", "critical_low": "<20", "critical_high": ">60"},
 
 # Chemistry
-"UREA": {"normal_range": "10-40 mg/dL", "critical_low": "<10", "critical_high": ">100"},
-"CREATININE": {"normal_range": "0.3-1.0 mg/dL", "critical_low": "<0.3", "critical_high": ">2.0"},
-"NA": {"normal_range": "135-145 mEq/L", "critical_low": "<120", "critical_high": ">160"},
-"K": {"normal_range": "3.5-5.0 mEq/L", "critical_low": "<2.5", "critical_high": ">6.5"},
-"CL": {"normal_range": "98-107 mEq/L", "critical_low": "<80", "critical_high": ">115"},
-"CA": {"normal_range": "8.8-10.8 mg/dL", "critical_low": "<7", "critical_high": ">13"},
-"MG": {"normal_range": "1.7-2.4 mg/dL", "critical_low": "<1", "critical_high": ">4"},
-"PHOSPHORUS": {"normal_range": "3.0-6.0 mg/dL", "critical_low": "<1.5", "critical_high": ">8"},
-"URIC ACID": {"normal_range": "2.5-7.0 mg/dL", "critical_low": "<1", "critical_high": ">10"},
-"LDH": {"normal_range": "100-300 U/L", "critical_low": "<50", "critical_high": ">1000"},
-"FERRITIN": {"normal_range": "10-300 ng/mL", "critical_low": "<10", "critical_high": ">1000"},
+"UREA": {"normal_range": "10-40", "critical_low": "<10", "critical_high": ">100"},
+"CREATININE": {"normal_range": "0.3-1.0", "critical_low": "<0.3", "critical_high": ">2.0"},
+"NA": {"normal_range": "135-145", "critical_low": "<120", "critical_high": ">160"},
+"K": {"normal_range": "3.5-5.0", "critical_low": "<2.5", "critical_high": ">6.5"},
+"CL": {"normal_range": "98-107", "critical_low": "<80", "critical_high": ">115"},
+"CA": {"normal_range": "8.8-10.8", "critical_low": "<7", "critical_high": ">13"},
+"MG": {"normal_range": "1.7-2.4", "critical_low": "<1", "critical_high": ">4"},
+"PHOSPHORUS": {"normal_range": "3.0-6.0", "critical_low": "<1.5", "critical_high": ">8"},
+"URIC ACID": {"normal_range": "2.5-7.0", "critical_low": "<1", "critical_high": ">10"},
+"LDH": {"normal_range": "100-300", "critical_low": "<50", "critical_high": ">1000"},
+"FERRITIN": {"normal_range": "10-300", "critical_low": "<10", "critical_high": ">1000"},
 
 # Liver
-"GPT (ALT)": {"normal_range": "5-45 U/L", "critical_low": "<5", "critical_high": ">200"},
-"GOT (AST)": {"normal_range": "10-40 U/L", "critical_low": "<10", "critical_high": ">200"},
-"ALK PHOS": {"normal_range": "50-400 U/L", "critical_low": "<50", "critical_high": ">1000"},
-"T.BILIRUBIN": {"normal_range": "0.2-1.2 mg/dL", "critical_low": "<0.2", "critical_high": ">5"},
-"D.BILIRUBIN": {"normal_range": "0-0.4 mg/dL", "critical_low": "<0", "critical_high": ">2"},
+"GPT (ALT)": {"normal_range": "5-45", "critical_low": "<5", "critical_high": ">200"},
+"GOT (AST)": {"normal_range": "10-40", "critical_low": "<10", "critical_high": ">200"},
+"ALK PHOS": {"normal_range": "50-400", "critical_low": "<50", "critical_high": ">1000"},
+"T.BILIRUBIN": {"normal_range": "0.2-1.2", "critical_low": "<0.2", "critical_high": ">5"},
+"D.BILIRUBIN": {"normal_range": "0-0.4", "critical_low": "<0", "critical_high": ">2"},
 
 # Coagulation
-"PT": {"normal_range": "11-14 sec", "critical_low": "<10", "critical_high": ">30"},
-"APTT": {"normal_range": "25-35 sec", "critical_low": "<20", "critical_high": ">60"},
+"PT": {"normal_range": "11-14", "critical_low": "<10", "critical_high": ">30"},
+"APTT": {"normal_range": "25-35", "critical_low": "<20", "critical_high": ">60"},
 "INR": {"normal_range": "0.9-1.2", "critical_low": "<0.8", "critical_high": ">5"},
-"FIBRINOGEN": {"normal_range": "200-400 mg/dL", "critical_low": "<100", "critical_high": ">700"},
-"D-DIMER": {"normal_range": "<0.5 μg/mL", "critical_low": "<0.1", "critical_high": ">5"},
+"FIBRINOGEN": {"normal_range": "200-400", "critical_low": "<100", "critical_high": ">700"},
+"D-DIMER": {"normal_range": "<0.5", "critical_low": "<0.1", "critical_high": ">5"},
 
 # ABG
 "PH": {"normal_range": "7.35-7.45", "critical_low": "<7.2", "critical_high": ">7.6"},
-"PCO2": {"normal_range": "35-45 mmHg", "critical_low": "<25", "critical_high": ">60"},
-"PO2": {"normal_range": "80-100 mmHg", "critical_low": "<60", "critical_high": ">120"},
-"HCO3": {"normal_range": "22-26 mEq/L", "critical_low": "<15", "critical_high": ">35"},
+"PCO2": {"normal_range": "35-45", "critical_low": "<25", "critical_high": ">60"},
+"PO2": {"normal_range": "80-100", "critical_low": "<60", "critical_high": ">120"},
+"HCO3": {"normal_range": "22-26", "critical_low": "<15", "critical_high": ">35"},
 "BASE EXCESS": {"normal_range": "-2 to +2", "critical_low": "<-5", "critical_high": ">5"},
 
 # Viral Screen
@@ -111,52 +137,23 @@ MALIGNANCIES = [
     "BRAIN T", "RHABDO", "RETINO", "HEPATO", "GERM CELL"
 ]
 
-DROPDOWN_OPTIONS = {
-    "GENDER": ["MALE", "FEMALE"],
-    "B_SYMPTOMS": ["FEVER", "NIGHT SWEAT", "WT LOSS", "NO B-SYMPTOMS"],
-    "EXAMINATION": [
-        "FEBRILE", "HEPATOMEGALLY", "SPLENOMEGALLY", "LYMPHADENOPATHY",
-        "TESTICULAR ENLARGMENT", "GUM HYPATROPHY", "CRANIAL PULSY",
-        "RACCON EYES", "BONY SWELLING", "JOINT SWELLING", "SUBCONJUNCTIVAL HE",
-        "HIGH BP", "HYPOTENSION", "OTHERS"
-    ],
-    "SYMPTOMS": [
-        "ASYMPTOMATIC", "FEVER", "BONE PAIN", "BRUSIS", "WT LOSS",
-        "NIGHT SWEATTING", "NECK SWELLING", "JOINT SWELLING",
-        "ABDOMINAL DISTENSION", "HEMATURIA", "FRACTURE", "PALLOR",
-        "VOMITTING", "DIARRHEA", "CONSTIPATION", "EPISTAXIS",
-        "HEMATEMESIS", "GUM BLEEDING", "MELENA", "HEMATOCHEZIA", "OTHERS"
-    ],
-    "SURGERY": ["INDICATED", "NOT INDICATED", "DONE"],
-    "SR_TYPE": [
-        "COMPLETE RESECTION", "DEBULKING", "PALLIATIVE",
-        "INCOMPLETE RESECTION", "DIAGNOSTIC &/OR STAGING"
-    ],
-    "STATE": ["ALIVE", "DECEASED", "MISSED FOLLOW UP"],
-    "STEROID_R": ["GOOD", "POOR"],
-    "TREATMENT_STAGE": [
-        "PRE PHASE", "INDUCTION", "CONSOLIDATION",
-        "MAINTENANCE", "OFF THERAPY"
-    ],
-    "RISK_GROUP": ["LRG", "SRG", "IRG", "HRG"],
-    "BMT": ["INDICATED", "NO INDICATION", "DONE", "UNKNOWN"],
-    "RADIOTHERAPY": ["INDICATED", "NOT INDICATED", "DONE"],
-    "NECROSIS_GRADE": [
-        "GRADE 1 <50%", "GRADE 2 >50%", "GRADE 3 >90%", "GRADE 4 >100%"
-    ],
-    "CSF": [
-        "INITIAL 0", "INITIAL 1", "INITIAL 2", "INITIAL 3",
-        "RELPASE 1", "RELAPSE 2", "RELAPSE 3"
-    ],
-    "STAGE": [
-        "1", "2", "3", "4", "4S", "5", "REFRACTORY 1",
-        "REFRACTORY 2", "REFRACTORY 3", "LOCAL", "METS"
-    ],
-    "THERAPY_SIDE_EFFECTS": [
-        "MTX TOXICITY", "LEUKOENCEPHALOPATHY", "HGE CYSTITIS",
-        "PERIPHERAL NEUROPATHY", "PULMONARY FIBROSIS",
-        "L-ASP. SENSITIVITY", "OTHERS"
-    ]
+MALIGNANCY_COLORS = {
+    # Hematologic malignancies
+    "ALL": "#E8F4F8",        # Soft blue
+    "AML": "#D6EAF8",        # Ice blue
+    "LYMPHOMA": "#F9EBEA",   # Soft red
+    
+    # Solid tumors
+    "EWING": "#F5CBA7",      # Peach
+    "OSTEO": "#F5B7B1",      # Blush pink
+    "NEUROBLASTOMA": "#D1F2EB",  # Mint green
+    "RHABDO": "#FDEBD0",     # Cream
+    "RETINO": "#D6EAF8",     # Powder blue
+    "HEPATO": "#FCF3CF",     # Pale yellow
+    "GERM CELL": "#EBDEF0",  # Lilac
+    
+    # CNS tumors
+    "BRAIN T": "#D5DBDB"     # Silver
 }
 
 MALIGNANCY_FIELDS = {
@@ -251,12 +248,15 @@ CHEMO_STOCKS_URL = "https://docs.google.com/spreadsheets/d/1QxcuCM4JLxPyePbaCvB1
 
 # Supported file extensions for sync
 SUPPORTED_EXTENSIONS = {
-    'documents': ['.doc', '.docx', '.txt', '.pdf', '.rtf'],
-    'spreadsheets': ['.xls', '.xlsx', '.xlsm', '.csv'],
-    'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff'],
-    'data': ['.json', '.xml'],
-    'presentations': ['.ppt', '.pptx'],
-    'archives': ['.zip', '.rar']
+    'documents': ['.doc', '.docx', '.txt', '.pdf', '.rtf', '.odt', '.wps', '.md'],
+    'spreadsheets': ['.xls', '.xlsx', '.xlsm', '.csv', '.ods', '.tsv'],
+    'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.svg', '.webp', '.heif'],
+    'data': ['.json', '.xml', '.yaml', '.csv', '.parquet'],
+    'presentations': ['.ppt', '.pptx', '.odp', '.key'],
+    'archives': ['.zip', '.rar', '.tar', '.gz', '.7z', '.bz2'],
+    'audio': ['.mp3', '.wav', '.aac', '.ogg', '.flac'],
+    'video': ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv'],
+    'markup': ['.html', '.htm', '.xml', '.markdown']
 }
 
 class GoogleDriveManager:
@@ -1173,20 +1173,21 @@ class OncologyApp:
                                       style='Section.TLabelframe')
         patient_frame.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
         
-        btn1 = ttk.Button(patient_frame, text="➕ New Patient", command=self.add_patient,
-                         style='Accent.TButton')
-        btn1.pack(fill=tk.X, pady=2)
+        if self.users[self.current_user]["role"] in ["admin", "editor"]:
+            btn1 = ttk.Button(patient_frame, text="➕ New Patient", command=self.add_patient,
+                             style='Accent.TButton')
+            btn1.pack(fill=tk.X, pady=2)
         
         btn2 = ttk.Button(patient_frame, text="🔍 Search Patients", command=self.search_patient,
                          style='Accent.TButton')
         btn2.pack(fill=tk.X, pady=2)
         
-        if self.users[self.current_user]["role"] == "admin":
+        if self.users[self.current_user]["role"] in ["admin", "editor"]:
             btn3 = ttk.Button(patient_frame, text="📋 All Patients", command=self.view_all_patients,
                              style='Accent.TButton')
             btn3.pack(fill=tk.X, pady=2)
 
-    # Section 2: Clinical Tools
+        # Section 2: Clinical Tools
         clinical_frame = ttk.LabelFrame(button_grid, text="CLINICAL TOOLS", 
                                        style='Section.TLabelframe')
         clinical_frame.grid(row=0, column=1, sticky='nsew', padx=5, pady=5)
@@ -1215,30 +1216,35 @@ class OncologyApp:
 
         # Section 4: Data Management
         data_frame = ttk.LabelFrame(button_grid, text="DATA MANAGEMENT", 
-                                   style='Section.TLabelframe')
+                                    style='Section.TLabelframe')
         data_frame.grid(row=1, column=1, sticky='nsew', padx=5, pady=5)
-        
-        ttk.Button(data_frame, text="📤 Export Data", command=self.export_all_data,
-                  style='Data.TButton').pack(fill=tk.X, pady=2)
-        ttk.Button(data_frame, text="💾 Backup", command=self.backup_data,
-                  style='Data.TButton').pack(fill=tk.X, pady=2)
+
+        if self.users[self.current_user]["role"] in ["admin", "editor"]:
+            ttk.Button(data_frame, text="💾 Backup", command=self.backup_data,
+                       style='Data.TButton').pack(fill=tk.X, pady=2)
+        if self.users[self.current_user]["role"] == "admin":
+            ttk.Button(data_frame, text="📤 Export Data", command=self.export_all_data,
+                       style='Data.TButton').pack(fill=tk.X, pady=2)
         if self.current_user == "mej.esam":
             ttk.Button(data_frame, text="🔄 Restore", command=self.restore_data,
-                      style='Data.TButton').pack(fill=tk.X, pady=2)
+                       style='Data.TButton').pack(fill=tk.X, pady=2)
+            ttk.Button(data_frame, text="📋 Manage Drop-downs", command=self.manage_dropdowns,
+                       style='Data.TButton').pack(fill=tk.X, pady=2)
 
         # Section 5: Administration
         admin_frame = ttk.LabelFrame(button_grid, text="ADMINISTRATION", 
                                     style='Section.TLabelframe')
         admin_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
         
-        if self.users[self.current_user]["role"] == "admin" or self.current_user == "mej.esam":
-            ttk.Button(admin_frame, text="👥 Manage Users", command=self.manage_users,
-                      style='Admin.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        if self.users[self.current_user]["role"] != "viewer":
             ttk.Button(admin_frame, text="🔑 Change Password", command=self.change_password,
+                      style='Admin.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        if self.users[self.current_user]["role"] in ["admin", "editor"] or self.current_user == "mej.esam":
+            ttk.Button(admin_frame, text="👥 Manage Users", command=self.manage_users,
                       style='Admin.TButton').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
         ttk.Button(admin_frame, text="🚪 Logout", command=self.setup_login_screen,
                   style='Logout.TButton').pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=2)
-
+        
         # Configure grid weights
         button_grid.columnconfigure(0, weight=1)
         button_grid.columnconfigure(1, weight=1)
@@ -1287,7 +1293,88 @@ class OncologyApp:
                             background='#34495e', foreground='white', padding=6)
         self.style.configure('Version.TLabel', font=('Helvetica', 8), 
                             foreground='#7f8c8d', background=self.light_color)
-                    
+                 
+    def manage_dropdowns(self):
+        """Open a window to manage drop-down lists."""
+        manage_window = tk.Toplevel(self.root)
+        manage_window.title("Manage Drop-down Lists")
+        manage_window.geometry("400x300")
+
+        # Input for drop-down list name
+        ttk.Label(manage_window, text="Drop-down List:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        dropdown_name_var = tk.StringVar()
+        dropdown_name_entry = ttk.Entry(manage_window, textvariable=dropdown_name_var)
+        dropdown_name_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+
+        # Input for value to add/edit/delete
+        ttk.Label(manage_window, text="Value:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        value_var = tk.StringVar()
+        value_entry = ttk.Entry(manage_window, textvariable=value_var)
+        value_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+
+        # Action buttons
+        def add_value():
+            dropdown_name = dropdown_name_var.get().upper()
+            value = value_var.get()
+            if dropdown_name and value:
+                dropdowns = load_dropdown_lists()
+                # Create dropdown list if it doesn't exist
+                if dropdown_name not in dropdowns:
+                    dropdowns[dropdown_name] = []
+                # Add value if not exists
+                if value not in dropdowns[dropdown_name]:
+                    dropdowns[dropdown_name].append(value)
+                    save_dropdown_lists(dropdowns)
+                    messagebox.showinfo("Success", f"Added '{value}' to '{dropdown_name}'.")
+                else:
+                    messagebox.showwarning("Warning", f"'{value}' already exists in '{dropdown_name}'.")
+            else:
+                messagebox.showerror("Error", "Please enter both drop-down list and value.")
+
+        def edit_value():
+            dropdown_name = dropdown_name_var.get().upper()
+            value = value_var.get()
+            if dropdown_name and value:
+                dropdowns = load_dropdown_lists()
+                if dropdown_name in dropdowns:
+                    if value in dropdowns[dropdown_name]:
+                        new_value = simpledialog.askstring("Edit Value", "Enter new value:", initialvalue=value)
+                        if new_value and new_value not in dropdowns[dropdown_name]:
+                            index = dropdowns[dropdown_name].index(value)
+                            dropdowns[dropdown_name][index] = new_value
+                            save_dropdown_lists(dropdowns)
+                            messagebox.showinfo("Success", f"Edited '{value}' to '{new_value}' in '{dropdown_name}'.")
+                        elif new_value in dropdowns[dropdown_name]:
+                            messagebox.showwarning("Warning", f"'{new_value}' already exists in '{dropdown_name}'.")
+                    else:
+                        messagebox.showerror("Error", f"Value '{value}' not found in '{dropdown_name}'.")
+                else:
+                    messagebox.showerror("Error", f"Drop-down list '{dropdown_name}' not found.")
+            else:
+                messagebox.showerror("Error", "Please enter both drop-down list and value.")
+
+        def delete_value():
+            dropdown_name = dropdown_name_var.get().upper()
+            value = value_var.get()
+            if dropdown_name and value:
+                dropdowns = load_dropdown_lists()
+                if dropdown_name in dropdowns:
+                    if value in dropdowns[dropdown_name]:
+                        dropdowns[dropdown_name].remove(value)
+                        save_dropdown_lists(dropdowns)
+                        messagebox.showinfo("Success", f"Deleted '{value}' from '{dropdown_name}'.")
+                    else:
+                        messagebox.showerror("Error", f"Value '{value}' not found in '{dropdown_name}'.")
+                else:
+                    messagebox.showerror("Error", f"Drop-down list '{dropdown_name}' not found.")
+            else:
+                messagebox.showerror("Error", "Please enter both drop-down list and value.")
+
+        # Buttons for actions
+        ttk.Button(manage_window, text="Add", command=add_value).grid(row=2, column=0, padx=5, pady=5)
+        ttk.Button(manage_window, text="Edit", command=edit_value).grid(row=2, column=1, padx=5, pady=5)
+        ttk.Button(manage_window, text="Delete", command=delete_value).grid(row=2, column=2, padx=5, pady=5)
+
     def show_chemo_protocols(self):
         """Open the Protocols folder"""
         try:
@@ -4038,6 +4125,16 @@ class OncologyApp:
         if not malignancy:
             return
 
+        # Load drop-down options from JSON
+        DROPDOWN_OPTIONS = load_dropdown_lists()  # Load the options here
+
+        options = DROPDOWN_OPTIONS.get(field, [])
+        # Ensure options is always a list
+        if not isinstance(options, list):
+            options = []
+        for option in options:
+            listbox.insert(tk.END, option)
+
         # Common fields
         common_frame = ttk.LabelFrame(self.malignancy_fields_frame, text="Common Information", style='TFrame')
         common_frame.pack(fill=tk.X, padx=10, pady=10)
@@ -4052,7 +4149,7 @@ class OncologyApp:
             if field == "GENDER":
                 var = tk.StringVar()
                 combobox = ttk.Combobox(common_frame, textvariable=var, 
-                                       values=DROPDOWN_OPTIONS["GENDER"], state="readonly")
+                                       values=DROPDOWN_OPTIONS.get("GENDER", []), state="readonly")
                 combobox.grid(row=row, column=1, padx=5, pady=5, sticky="ew")
                 self.entries[field] = var
             elif field in ["EXAMINATION", "SYMPTOMS"]:
@@ -4063,7 +4160,7 @@ class OncologyApp:
                 scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=listbox.yview)
                 listbox.configure(yscrollcommand=scrollbar.set)
                 
-                options = DROPDOWN_OPTIONS[field]
+                options = DROPDOWN_OPTIONS.get(field, [])
                 for option in options:
                     listbox.insert(tk.END, option)
                 
@@ -4109,7 +4206,7 @@ class OncologyApp:
             if field in DROPDOWN_OPTIONS:
                 var = tk.StringVar()
                 combobox = ttk.Combobox(malignancy_frame, textvariable=var, 
-                                       values=DROPDOWN_OPTIONS[field], state="readonly")
+                                       values=DROPDOWN_OPTIONS.get(field, []), state="readonly")
                 combobox.grid(row=row, column=1, padx=5, pady=5, sticky="ew")
                 self.entries[field] = var
             elif field == "SR_DATE":
@@ -4131,7 +4228,7 @@ class OncologyApp:
                 scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=listbox.yview)
                 listbox.configure(yscrollcommand=scrollbar.set)
                 
-                options = DROPDOWN_OPTIONS[field]
+                options = DROPDOWN_OPTIONS.get(field, [])
                 for option in options:
                     listbox.insert(tk.END, option)
                 
@@ -4164,7 +4261,7 @@ class OncologyApp:
         ttk.Button(btn_frame, text="Patient Report", command=self.create_patient_report,
                   style='Yellow.TButton').pack(side=tk.LEFT, padx=10)
         ttk.Button(btn_frame, text="Back to Menu", command=self.main_menu).pack(side=tk.LEFT, padx=10)
-    
+
     def show_calendar(self, entry_widget):
         """Show a calendar popup for date selection"""
         top = tk.Toplevel(self.root)
@@ -4324,264 +4421,286 @@ class OncologyApp:
     
     def create_patient_report(self, file_no=None, create_only=False):
         """Create a Word document report for the patient"""
-        if not file_no:
-            file_no = self.entries["FILE NUMBER"].get()
+        try:
             if not file_no:
-                messagebox.showerror("Error", "Please enter a file number first")
-                return
-        
-        doc_name = f"Patient_{file_no}_Report.docx"
-        doc_path = os.path.join(f"Patient_{file_no}", doc_name)
-        
-        if not os.path.exists(doc_path) or not create_only:
-            doc = Document()
+                file_no = self.entries["FILE NUMBER"].get()
+                if not file_no:
+                    messagebox.showerror("Error", "Please enter a file number first")
+                    return
+
+            doc_name = f"Patient_{file_no}_Report.docx"
+            doc_path = os.path.join(f"Patient_{file_no}", doc_name)
             
-            # Add title
-            doc.add_heading(f'Patient Report - File Number: {file_no}', 0)
-            
-            # Add basic info
-            doc.add_heading('Basic Information', level=1)
-            
-            if not create_only:
-                # If creating from current form data
-                for field in COMMON_FIELDS:
-                    if field in self.entries:
-                        value = ""
-                        if isinstance(self.entries[field], tk.Listbox):
-                            value = ", ".join([self.entries[field].get(i) for i in self.entries[field].curselection()])
-                        elif isinstance(self.entries[field], tk.StringVar):
-                            value = self.entries[field].get()
-                        else:
-                            value = self.entries[field].get()
-                        
-                        doc.add_paragraph(f"{field}: {value}", style='List Bullet')
-            else:
-                # If creating from existing data
-                patient = next((p for p in self.patient_data if p.get("FILE NUMBER") == file_no), None)
-                if patient:
+            # Ensure patient folder exists
+            os.makedirs(f"Patient_{file_no}", exist_ok=True)
+
+            if not os.path.exists(doc_path) or not create_only:
+                doc = Document()
+                
+                # Add title with error handling
+                try:
+                    doc.add_heading(f'Patient Report - File Number: {file_no}', 0)
+                except ValueError:
+                    doc.add_heading(f'Patient Report', 0)
+
+                # Add basic info section
+                doc.add_heading('Basic Information', level=1)
+                
+                if not create_only:
+                    # Create from current form data
                     for field in COMMON_FIELDS:
-                        if field in patient:
-                            doc.add_paragraph(f"{field}: {patient[field]}", style='List Bullet')
-            
-            # Save document
-            doc.save(doc_path)
-        
-        if not create_only:
-            # Upload to Google Drive in background
-            if self.drive.initialized:
-                self.executor.submit(self.drive.upload_file, doc_path, doc_name, self.drive.create_patient_folder(file_no))
-            
-            try:
-                os.startfile(doc_path)
-            except:
-                messagebox.showerror("Error", f"Could not open document: {doc_path}")
+                        value = ""
+                        if field in self.entries:
+                            widget = self.entries[field]
+                            if isinstance(widget, tk.Listbox):
+                                selected = widget.curselection()
+                                value = ", ".join([widget.get(i) for i in selected])
+                            elif isinstance(widget, tk.StringVar):
+                                value = widget.get()
+                            else:
+                                value = widget.get()
+                        doc.add_paragraph(f"{field}: {value}", style='List Bullet')
+                else:
+                    # Create from existing data with validation
+                    patient = next((p for p in self.patient_data if str(p.get("FILE NUMBER")) == str(file_no)), None)
+                    if patient:
+                        for field in COMMON_FIELDS:
+                            value = patient.get(field, "N/A")
+                            doc.add_paragraph(f"{field}: {value}", style='List Bullet')
+
+                # Save with error handling
+                try:
+                    doc.save(doc_path)
+                except PermissionError:
+                    messagebox.showerror("Error", f"Please close {doc_name} before saving")
+                    return
+
+            if not create_only:
+                # Upload to Google Drive
+                if self.drive.initialized:
+                    self.executor.submit(
+                        self.drive.upload_file,
+                        doc_path,
+                        doc_name,
+                        self.drive.create_patient_folder(file_no)
+                    )
+                
+                # Open document with error handling
+                try:
+                    if os.name == 'nt':
+                        os.startfile(doc_path)
+                    else:
+                        subprocess.call(('xdg-open', doc_path))
+                except Exception as e:
+                    messagebox.showerror("Error", f"Could not open document: {str(e)}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create report: {str(e)}")
+            self.main_menu()
 
     def search_patient(self):
         """Display the patient search form"""
         self.clear_frame()
+        try:
+            main_frame = tk.Frame(self.root, bg='white')
+            main_frame.pack(expand=True, fill=tk.BOTH)
 
-        # Main container with gradient background
-        main_frame = tk.Frame(self.root, bg='white')
-        main_frame.pack(expand=True, fill=tk.BOTH)
-        
-        # Left side with logo and app name
-        left_frame = tk.Frame(main_frame, bg='#3498db')
-        left_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
-        
-        # App logo and name
-        logo_frame = tk.Frame(left_frame, bg='#3498db')
-        logo_frame.pack(expand=True, fill=tk.BOTH, padx=40, pady=40)
-        
-        # App name with modern font
-        tk.Label(logo_frame, text="OncoCare", font=('Helvetica', 24, 'bold'), 
-                bg='#3498db', fg='white').pack(pady=(0, 10))
-        
-        tk.Label(logo_frame, text="Search Patient", 
-                font=('Helvetica', 14), bg='#3498db', fg='white').pack(pady=(0, 40))
-        
-        # Right side with search form
-        right_frame = tk.Frame(main_frame, bg='white')
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        
-        # Search form container
-        form_container = ttk.Frame(right_frame, style='TFrame')
-        form_container.place(relx=0.5, rely=0.5, anchor='center')
+            # Left sidebar
+            left_frame = tk.Frame(main_frame, bg='#3498db')
+            left_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+            
+            # Logo section
+            logo_frame = tk.Frame(left_frame, bg='#3498db')
+            logo_frame.pack(padx=40, pady=40, fill=tk.BOTH, expand=True)
+            tk.Label(logo_frame, text="OncoCare", font=('Helvetica', 24, 'bold'), 
+                    bg='#3498db', fg='white').pack(pady=(0, 10))
+            tk.Label(logo_frame, text="Search Patient", 
+                    font=('Helvetica', 14), bg='#3498db', fg='white').pack()
 
-        ttk.Label(form_container, text="File Number:", 
-                 font=('Helvetica', 12)).pack(pady=5)
-        
-        self.search_file_no_entry = ttk.Entry(form_container, width=40, 
-                                            font=('Helvetica', 12))
-        self.search_file_no_entry.pack(pady=5)
+            # Right side form
+            right_frame = tk.Frame(main_frame, bg='white')
+            right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        ttk.Label(form_container, text="Name:", 
-                 font=('Helvetica', 12)).pack(pady=5)
-        
-        self.search_name_entry = ttk.Entry(form_container, width=40, 
-                                         font=('Helvetica', 12))
-        self.search_name_entry.pack(pady=5)
+            # Form container with improved layout
+            form_container = ttk.Frame(right_frame, style='TFrame')
+            form_container.place(relx=0.5, rely=0.4, anchor='center')
 
-        btn_frame = ttk.Frame(form_container, style='TFrame')
-        btn_frame.pack(pady=20)
+            # Search fields with validation
+            ttk.Label(form_container, text="File Number:", font=('Helvetica', 12)).grid(row=0, column=0, padx=5, pady=5)
+            self.search_file_no_entry = ttk.Entry(form_container, width=25, font=('Helvetica', 12))
+            self.search_file_no_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        ttk.Button(btn_frame, text="Search", command=self.perform_search,
-                   style='Blue.TButton').pack(side=tk.LEFT, padx=10)
-        
-        ttk.Button(btn_frame, text="Back", command=self.main_menu).pack(side=tk.LEFT, padx=10)
+            ttk.Label(form_container, text="Name:", font=('Helvetica', 12)).grid(row=1, column=0, padx=5, pady=5)
+            self.search_name_entry = ttk.Entry(form_container, width=25, font=('Helvetica', 12))
+            self.search_name_entry.grid(row=1, column=1, padx=5, pady=5)
+
+            # Button grid
+            btn_frame = ttk.Frame(form_container)
+            btn_frame.grid(row=2, column=0, columnspan=2, pady=20)
+
+            ttk.Button(btn_frame, text="Search", command=self.perform_search,
+                       style='Blue.TButton').grid(row=0, column=0, padx=10)
+            ttk.Button(btn_frame, text="Back", command=self.main_menu).grid(row=0, column=1, padx=10)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Search form error: {str(e)}")
+            self.main_menu()
 
     def perform_search(self):
-        """Perform patient search based on criteria"""
-        file_no = self.search_file_no_entry.get().strip()
-        name = self.search_name_entry.get().strip()
+        """Perform patient search with validation"""
+        try:
+            file_no = self.search_file_no_entry.get().strip()
+            name = self.search_name_entry.get().strip().lower()
 
-        if not self.patient_data:
-            messagebox.showerror("Error", "No patient data available")
-            return
+            if not self.patient_data:
+                messagebox.showinfo("Info", "No patient data available")
+                return
 
-        # Filter results based on search criteria
-        matching_data = []
-        for patient in self.patient_data:
-            match = True
-            
-            if file_no and patient.get("FILE NUMBER") != file_no:
-                match = False
-            if name and name.lower() not in patient.get("NAME", "").lower():
-                match = False
-            
-            if match:
-                matching_data.append(patient)
+            # Convert all file numbers to strings for comparison
+            str_patient_data = []
+            for p in self.patient_data:
+                p["FILE NUMBER"] = str(p.get("FILE NUMBER", ""))
+                str_patient_data.append(p)
 
-        if not matching_data:
-            messagebox.showerror("Not Found", "No patient found with the given criteria")
-            return
+            # Filter patients
+            matching = []
+            for patient in str_patient_data:
+                file_match = True
+                name_match = True
+                
+                if file_no:
+                    file_match = patient["FILE NUMBER"] == file_no
+                if name:
+                    name_match = name in patient.get("NAME", "").lower()
+                
+                if file_match and name_match:
+                    matching.append(patient)
 
-        # Handle multiple results
-        self.current_results = matching_data
-        self.current_result_index = 0
-        self.view_patient(self.current_results[self.current_result_index], 
-                         multiple_results=(len(matching_data) > 1))
+            if not matching:
+                messagebox.showinfo("Not Found", "No matching patients found")
+                return
+
+            self.current_results = matching
+            self.current_result_index = 0
+            self.view_patient(self.current_results[0], len(matching) > 1)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Search failed: {str(e)}")
+            self.search_patient()
 
     def view_patient(self, patient_data, multiple_results=False):
-        """View patient details"""
-        self.clear_frame()
+        """View patient details with error handling"""
+        try:
+            self.clear_frame()
+            if not patient_data:
+                raise ValueError("No patient data provided")
 
-        # Main container with gradient background
-        main_frame = tk.Frame(self.root, bg='white')
-        main_frame.pack(expand=True, fill=tk.BOTH)
-        
-        # Left side with logo and app name
-        left_frame = tk.Frame(main_frame, bg='#3498db')
-        left_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
-        
-        # App logo and name
-        logo_frame = tk.Frame(left_frame, bg='#3498db')
-        logo_frame.pack(expand=True, fill=tk.BOTH, padx=40, pady=40)
-        
-        malignancy = patient_data.get("MALIGNANCY", "")
-        title = f"Patient Details - {malignancy}" if malignancy else "Patient Details"
-        
-        # App name with modern font
-        tk.Label(logo_frame, text="OncoCare", font=('Helvetica', 24, 'bold'), 
-                bg='#3498db', fg='white').pack(pady=(0, 10))
-        
-        tk.Label(logo_frame, text=title, 
-                font=('Helvetica', 14), bg='#3498db', fg='white').pack(pady=(0, 40))
-        
-        # Right side with patient details
-        right_frame = tk.Frame(main_frame, bg='white')
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        
-        # Main content
-        form_frame = self.create_scrollable_frame(right_frame)
+            # Main container setup
+            main_frame = tk.Frame(self.root, bg='white')
+            main_frame.pack(expand=True, fill=tk.BOTH)
 
-        # Display patient data in a clean layout with alternating colors
-        bg_color = MALIGNANCY_COLORS.get(malignancy, "#e6f2ff")
-        
-        # User info
-        user_frame = ttk.Frame(form_frame, style='TFrame')
-        user_frame.pack(fill=tk.X, pady=5, padx=10)
-        
-        created_by = patient_data.get("CREATED_BY", "Unknown")
-        created_date = patient_data.get("CREATED_DATE", "Unknown")
-        modified_by = patient_data.get("LAST_MODIFIED_BY", "Unknown")
-        modified_date = patient_data.get("LAST_MODIFIED_DATE", "Unknown")
-        
-        ttk.Label(user_frame, text=f"Added by: {created_by} on {created_date}", 
-                 font=('Helvetica', 10, 'italic')).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Label(user_frame, text=f"Last modified by: {modified_by} on {modified_date}", 
-                 font=('Helvetica', 10, 'italic')).pack(side=tk.RIGHT, padx=5)
-
-        # Common fields
-        common_frame = ttk.LabelFrame(form_frame, text="Common Information", style='TFrame')
-        common_frame.pack(fill=tk.X, padx=10, pady=10)
-
-        for i, field in enumerate(COMMON_FIELDS):
-            row_frame = tk.Frame(common_frame, bg=bg_color if i % 2 == 0 else '#f0f7ff')
-            row_frame.pack(fill=tk.X, ipady=5)
-
-            tk.Label(row_frame, text=f"{field}:", width=25, anchor="w",
-                     bg=row_frame['bg'], font=('Helvetica', 10, 'bold')).pack(side=tk.LEFT, padx=5)
+            # Left sidebar
+            left_frame = tk.Frame(main_frame, bg='#3498db')
+            left_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
             
-            tk.Label(row_frame, text=patient_data.get(field, ""), width=40, anchor="w",
-                     bg=row_frame['bg'], font=('Helvetica', 10)).pack(side=tk.LEFT)
+            # Logo section
+            logo_frame = tk.Frame(left_frame, bg='#3498db')
+            logo_frame.pack(padx=40, pady=40, fill=tk.BOTH, expand=True)
+            malignancy = patient_data.get("MALIGNANCY", "Unknown")
+            tk.Label(logo_frame, text="OncoCare", font=('Helvetica', 24, 'bold'), 
+                    bg='#3498db', fg='white').pack(pady=(0, 10))
+            tk.Label(logo_frame, text=f"Patient Details\n({malignancy})", 
+                    font=('Helvetica', 14), bg='#3498db', fg='white').pack()
 
-        # Malignancy-specific fields
-        if malignancy in MALIGNANCY_FIELDS:
-            specific_frame = tk.LabelFrame(form_frame, text=f"{malignancy} Specific Information", 
-                                          bg=bg_color)
-            specific_frame.pack(fill=tk.X, padx=10, pady=10)
+            # Right side content
+            right_frame = tk.Frame(main_frame, bg='white')
+            right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-            for i, field in enumerate(MALIGNANCY_FIELDS[malignancy]):
-                row_frame = tk.Frame(specific_frame, bg=bg_color if i % 2 == 0 else '#f0f7ff')
-                row_frame.pack(fill=tk.X, ipady=5)
+            # Scrollable content
+            canvas = tk.Canvas(right_frame, bg='white')
+            scrollbar = ttk.Scrollbar(right_frame, orient="vertical", command=canvas.yview)
+            scrollable_frame = ttk.Frame(canvas)
 
-                tk.Label(row_frame, text=f"{field}:", width=25, anchor="w",
-                         bg=row_frame['bg'], font=('Helvetica', 10, 'bold')).pack(side=tk.LEFT, padx=5)
+            # Configure scrolling
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(
+                    scrollregion=canvas.bbox("all")
+                )
+            )
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+
+            # Pack scroll elements
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            # Patient information
+            bg_color = MALIGNANCY_COLORS.get(malignancy, "#e6f2ff")
+            
+            # Metadata section
+            meta_frame = ttk.Frame(scrollable_frame)
+            meta_frame.pack(fill=tk.X, pady=10, padx=20)
+            created = patient_data.get("CREATED_DATE", "Unknown")
+            modified = patient_data.get("LAST_MODIFIED_DATE", "Unknown")
+            ttk.Label(meta_frame, text=f"Created: {created} | Last Modified: {modified}", 
+                     font=('Helvetica', 9)).pack()
+
+            # Common fields section
+            common_frame = ttk.LabelFrame(scrollable_frame, text="Basic Information")
+            common_frame.pack(fill=tk.X, padx=20, pady=10)
+            
+            for i, field in enumerate(COMMON_FIELDS):
+                row = ttk.Frame(common_frame)
+                row.pack(fill=tk.X, pady=2)
+                ttk.Label(row, text=f"{field}:", width=20, anchor='w').pack(side=tk.LEFT)
+                value = patient_data.get(field, "N/A")
+                ttk.Label(row, text=value, width=30, anchor='w').pack(side=tk.LEFT)
+
+            # Malignancy-specific fields
+            if malignancy in MALIGNANCY_FIELDS:
+                specific_frame = ttk.LabelFrame(scrollable_frame, 
+                    text=f"{malignancy} Specific Information")
+                specific_frame.pack(fill=tk.X, padx=20, pady=10)
                 
-                tk.Label(row_frame, text=patient_data.get(field, ""), width=40, anchor="w",
-                         bg=row_frame['bg'], font=('Helvetica', 10)).pack(side=tk.LEFT)
-        # Button frame
-        btn_frame = ttk.Frame(right_frame, padding="10 10 10 10", style='TFrame')
-        btn_frame.pack(fill=tk.X)
+                for field in MALIGNANCY_FIELDS[malignancy]:
+                    row = ttk.Frame(specific_frame)
+                    row.pack(fill=tk.X, pady=2)
+                    ttk.Label(row, text=f"{field}:", width=20, anchor='w').pack(side=tk.LEFT)
+                    value = patient_data.get(field, "N/A")
+                    ttk.Label(row, text=value, width=30, anchor='w').pack(side=tk.LEFT)
 
-        file_no = patient_data.get("FILE NUMBER", "")
-        
-        if self.users[self.current_user]["role"] in ["admin", "editor"]:
-            ttk.Button(btn_frame, text="Edit", command=lambda: self.edit_patient(patient_data),
-                      style='Blue.TButton').pack(side=tk.LEFT, padx=10)
-
-        if self.current_user == "mej.esam":
-            ttk.Button(btn_frame, text="Delete", command=lambda: self.delete_patient(patient_data),
-                      style='Red.TButton').pack(side=tk.LEFT, padx=10)
-
-        ttk.Button(btn_frame, text="Patient Folder", 
-                  command=lambda: self.open_existing_patient_folder(file_no),
-                  style='Green.TButton').pack(side=tk.LEFT, padx=10)
-        
-        ttk.Button(btn_frame, text="Patient Report", 
-                  command=lambda: self.open_existing_patient_report(file_no),
-                  style='Yellow.TButton').pack(side=tk.LEFT, padx=10)
-
-        if self.users[self.current_user]["role"] in ["admin", "editor", "pharmacist"]:
-            ttk.Button(btn_frame, text="Lab & EF", 
-                      command=lambda: self.show_lab_ef_window(patient_data),
-                      style='Purple.TButton').pack(side=tk.LEFT, padx=10)
-
-        # Show "Previous" and "Next" buttons only if multiple results are available
-        if multiple_results:
-            ttk.Button(btn_frame, text="Previous", 
-                      command=self.show_previous_result).pack(side=tk.LEFT, padx=10)
+            # Action buttons
+            btn_frame = ttk.Frame(right_frame)
+            btn_frame.pack(fill=tk.X, pady=10)
             
-            ttk.Button(btn_frame, text="Next", 
-                      command=self.show_next_result).pack(side=tk.LEFT, padx=10)
+            actions = [
+                ("Edit", lambda: self.edit_patient(patient_data), "Blue.TButton"),
+                ("Delete", lambda: self.delete_patient(patient_data), "Red.TButton"),
+                ("Folder", lambda: self.open_existing_patient_folder(
+                    patient_data["FILE NUMBER"]), "Green.TButton"),
+                ("Report", lambda: self.open_existing_patient_report(
+                    patient_data["FILE NUMBER"]), "Yellow.TButton")
+            ]
+            
+            for text, cmd, style in actions:
+                if text == "Delete" and self.current_user != "mej.esam":
+                    continue
+                ttk.Button(btn_frame, text=text, command=cmd, style=style).pack(side=tk.LEFT, padx=5)
 
-        ttk.Button(btn_frame, text="Back to Search", 
-                  command=self.search_patient).pack(side=tk.LEFT, padx=10)
-        
-        ttk.Button(btn_frame, text="Main Menu", command=self.main_menu, 
-                  style='Blue.TButton').pack(side=tk.RIGHT, padx=10)
-        
+            if multiple_results:
+                ttk.Button(btn_frame, text="Previous", 
+                          command=self.show_previous_result).pack(side=tk.LEFT, padx=5)
+                ttk.Button(btn_frame, text="Next", 
+                          command=self.show_next_result).pack(side=tk.LEFT, padx=5)
+
+            ttk.Button(btn_frame, text="Main Menu", 
+                      command=self.main_menu).pack(side=tk.RIGHT, padx=5)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to display patient: {str(e)}")
+            self.main_menu()
+
     def open_existing_patient_folder(self, file_no):
         """Open an existing patient's folder"""
         folder_name = f"Patient_{file_no}"
@@ -4677,6 +4796,9 @@ class OncologyApp:
         self.edit_entries = {}
         row = 0
         
+        # Load the drop-down lists from JSON
+        dropdowns = load_dropdown_lists()
+        
         # Create common fields
         for field in COMMON_FIELDS:
             ttk.Label(common_frame, text=f"{field}:", anchor="w").grid(row=row, column=0, padx=5, pady=5, sticky="w")
@@ -4686,7 +4808,7 @@ class OncologyApp:
             if field == "GENDER":
                 var = tk.StringVar(value=current_value)
                 combobox = ttk.Combobox(common_frame, textvariable=var, 
-                                      values=DROPDOWN_OPTIONS["GENDER"], state="readonly")
+                                      values=dropdowns.get("GENDER", []), state="readonly")
                 combobox.grid(row=row, column=1, padx=5, pady=5, sticky="ew")
                 self.edit_entries[field] = var
             elif field in ["EXAMINATION", "SYMPTOMS"]:
@@ -4697,7 +4819,7 @@ class OncologyApp:
                 scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=listbox.yview)
                 listbox.configure(yscrollcommand=scrollbar.set)
                 
-                options = DROPDOWN_OPTIONS[field]
+                options = dropdowns.get(field, [])
                 for option in options:
                     listbox.insert(tk.END, option)
                 
@@ -4757,10 +4879,10 @@ class OncologyApp:
                 
                 current_value = patient_data.get(field, "")
                 
-                if field in DROPDOWN_OPTIONS:
+                if field in dropdowns:
                     var = tk.StringVar(value=current_value)
                     combobox = ttk.Combobox(specific_frame, textvariable=var, 
-                                          values=DROPDOWN_OPTIONS[field], state="readonly")
+                                          values=dropdowns[field], state="readonly")
                     combobox.grid(row=row, column=1, padx=5, pady=5, sticky="ew")
                     self.edit_entries[field] = var
                 elif field == "SR_DATE":
@@ -4783,7 +4905,7 @@ class OncologyApp:
                     scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=listbox.yview)
                     listbox.configure(yscrollcommand=scrollbar.set)
                     
-                    options = DROPDOWN_OPTIONS[field]
+                    options = dropdowns.get(field, [])
                     for option in options:
                         listbox.insert(tk.END, option)
                     
@@ -4805,13 +4927,13 @@ class OncologyApp:
                                 others_value = val[8:]  # Remove "OTHERS: " prefix
                                 break
                         
-                        ttk.Label(specific_frame, text=f"{field} (Others):").grid(row=row+1, column=0, padx=5, pady=5, sticky="w")
-                        others_entry = ttk.Entry(specific_frame)
-                        others_entry.insert(0, others_value)
-                        others_entry.grid(row=row+1, column=1, padx=5, pady=5, sticky="ew")
-                        self.edit_entries[f"{field}_OTHERS"] = others_entry
-                        row += 1
-                else:
+                    ttk.Label(specific_frame, text=f"{field} (Others):").grid(row=row+1, column=0, padx=5, pady=5, sticky="w")
+                    others_entry = ttk.Entry(specific_frame)
+                    others_entry.insert(0, others_value)
+                    others_entry.grid(row=row+1, column=1, padx=5, pady=5, sticky="ew")
+                    self.edit_entries[f"{field}_OTHERS"] = others_entry
+                    row += 1
+
                     entry = ttk.Entry(specific_frame)
                     entry.insert(0, current_value)
                     entry.grid(row=row, column=1, padx=5, pady=5, sticky="ew")
@@ -4832,7 +4954,7 @@ class OncologyApp:
         
         ttk.Button(btn_frame, text="Main Menu", command=self.main_menu,
                   style='Blue.TButton').pack(side=tk.RIGHT, padx=10)
-    
+
     def save_edited_patient(self, original_data):
         """Save edited patient data"""
         # Validate date format
@@ -6502,4 +6624,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = OncologyApp(root)
     root.mainloop()
-    
