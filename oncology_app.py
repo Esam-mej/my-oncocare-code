@@ -4922,7 +4922,7 @@ class OncologyApp:
 
         # Left panel - Calculator
         left_panel = ttk.Frame(main_container, padding="5 5 5 5")
-        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         # Right panel - Drug Info
         right_panel = ttk.Frame(main_container, padding="5 5 5 5")
@@ -5259,13 +5259,19 @@ class OncologyApp:
         self.protocol_var = tk.StringVar()
         self.cycle_var = tk.StringVar()
         self.day_var = tk.StringVar()
+        
+        # New variables for infusion parameters
+        self.dilution_fluid_var = tk.StringVar()
+        self.total_volume_var = tk.StringVar()
+        self.infusion_duration_var = tk.StringVar()
+        self.infusion_rate_var = tk.StringVar()
 
         # Left Panel Layout
         row = 0
-        
+
         # Patient Information Section
         ttk.Label(left_panel, text="Patient Information", 
-                font=('Helvetica', 12, 'bold')).grid(row=row, column=0, columnspan=2, pady=5)
+                  font=('Helvetica', 12, 'bold')).grid(row=row, column=0, columnspan=2, pady=5)
         row += 1
 
         ttk.Label(left_panel, text="Name:").grid(row=row, column=0, padx=5, pady=2, sticky="e")
@@ -5294,12 +5300,12 @@ class OncologyApp:
 
         # Treatment Parameters Section
         ttk.Label(left_panel, text="Treatment Parameters", 
-                font=('Helvetica', 12, 'bold')).grid(row=row, column=0, columnspan=2, pady=10)
+                  font=('Helvetica', 12, 'bold')).grid(row=row, column=0, columnspan=2, pady=10)
         row += 1
 
         ttk.Label(left_panel, text="Drug:").grid(row=row, column=0, padx=5, pady=5, sticky="e")
         drug_combo = ttk.Combobox(left_panel, textvariable=self.drug_var, 
-                                values=list(self.chemo_drugs.keys()), state="readonly")
+                                  values=list(self.chemo_drugs.keys()), state="readonly")
         drug_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
         drug_combo.bind("<<ComboboxSelected>>", self.update_drug_info)
         row += 1
@@ -5328,34 +5334,58 @@ class OncologyApp:
         ttk.Entry(left_panel, textvariable=self.volume_var).grid(row=row, column=1, padx=5, pady=5, sticky="w")
         row += 1
 
+        # New fields for dilution and infusion parameters
+        ttk.Label(left_panel, text="Type of Dilution Fluid:").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+        fluid_combo = ttk.Combobox(left_panel, textvariable=self.dilution_fluid_var, 
+                                 values=["NS", "D5W", "Sterile Water", "D5NS"], state="readonly")
+        fluid_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
+        row += 1
+
+        ttk.Label(left_panel, text="Total Infused Volume (mL):").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+        ttk.Entry(left_panel, textvariable=self.total_volume_var).grid(row=row, column=1, padx=5, pady=5, sticky="w")
+        row += 1
+
+        ttk.Label(left_panel, text="Infusion Duration (hr):").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+        ttk.Entry(left_panel, textvariable=self.infusion_duration_var).grid(row=row, column=1, padx=5, pady=5, sticky="w")
+        row += 1
+
+        ttk.Label(left_panel, text="Infusion Rate (mL/hr):").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+        ttk.Label(left_panel, textvariable=self.infusion_rate_var, 
+                font=('Helvetica', 10, 'bold')).grid(row=row, column=1, padx=5, pady=5, sticky="w")
+        row += 1
+
+        # Set up trace for automatic rate calculation
+        self.total_volume_var.trace_add("write", self.calculate_infusion_rate)
+        self.infusion_duration_var.trace_add("write", self.calculate_infusion_rate)
+
         # Calculate Button
         ttk.Button(left_panel, text="Calculate Dosage", command=self.calculate_dosage,
-                 style='Blue.TButton').grid(row=row, column=0, columnspan=2, pady=15)
+                   style='Blue.TButton').grid(row=row, column=0, columnspan=2, pady=15)
         row += 1
 
         # Results Section
         ttk.Label(left_panel, text="Calculated Dose:").grid(row=row, column=0, padx=5, pady=5, sticky="e")
         ttk.Label(left_panel, textvariable=self.dosage_result_var, 
-                font=('Helvetica', 10, 'bold')).grid(row=row, column=1, padx=5, pady=5, sticky="w")
+                  font=('Helvetica', 10, 'bold')).grid(row=row, column=1, padx=5, pady=5, sticky="w")
         row += 1
 
         ttk.Label(left_panel, text="Administer Volume:").grid(row=row, column=0, padx=5, pady=5, sticky="e")
         ttk.Label(left_panel, textvariable=self.volume_result_var, 
-                font=('Helvetica', 10, 'bold')).grid(row=row, column=1, padx=5, pady=5, sticky="w")
+                  font=('Helvetica', 10, 'bold')).grid(row=row, column=1, padx=5, pady=5, sticky="w")
         row += 1
 
         # Export Button
         ttk.Button(left_panel, text="Export to Word", command=self.export_dosage_to_word,
-                 style='Green.TButton').grid(row=row, column=0, columnspan=2, pady=15)
+                   style='Green.TButton').grid(row=row, column=0, columnspan=2, pady=15)
 
         # Right Panel Drug Info
         info_label = ttk.Label(right_panel, text="Drug Information", 
-                             font=('Helvetica', 14, 'bold'))
+                               font=('Helvetica', 14, 'bold'))
         info_label.pack(pady=5)
         
         self.info_text = tk.Text(right_panel, wrap=tk.WORD, width=70, height=25, 
-                               padx=10, pady=10, font=('Helvetica', 10), 
-                               bg='white', fg='black')
+                                 padx=10, pady=10, font=('Helvetica', 10), 
+                                 bg='white', fg='black')
         scrollbar = ttk.Scrollbar(right_panel, command=self.info_text.yview)
         self.info_text.configure(yscrollcommand=scrollbar.set)
         
@@ -5364,33 +5394,57 @@ class OncologyApp:
         
         self.update_drug_info()
 
-        # Ensure all elements fit by configuring column weights
-        left_panel.grid_columnconfigure(0, weight=1)
-        left_panel.grid_columnconfigure(1, weight=3)
+        # Configure grid weights for left panel after creating all widgets
+        for i in range(row):
+            left_panel.grid_rowconfigure(i, weight=0)
+        left_panel.grid_rowconfigure(row-1, weight=1)  # Let last row expand
+
+        # Configure grid weights for main container
+        main_container.columnconfigure(0, weight=1)
+        main_container.columnconfigure(1, weight=1)
+        main_container.rowconfigure(0, weight=1)
+
+    def calculate_infusion_rate(self, *args):
+        """Calculate infusion rate automatically when volume/duration change"""
+        try:
+            volume = float(self.total_volume_var.get())
+            duration = float(self.infusion_duration_var.get())
+            rate = volume / duration
+            self.infusion_rate_var.set(f"{rate:.1f}")
+        except (ValueError, ZeroDivisionError):
+            self.infusion_rate_var.set("")
 
     def create_scrollable_frame(self, parent):
-        """Create a scrollable frame"""
+        """Create a scrollable frame with improved scroll region handling"""
         container = ttk.Frame(parent)
         canvas = tk.Canvas(container, highlightthickness=0)
         scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        # Configure canvas scrolling
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
-        
+
+        # Pack elements
         container.pack(fill="both", expand=True)
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        # Add cross-platform mousewheel support
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
-        def _on_mouse_wheel(event):
-            canvas.yview_scroll(-1 * (event.delta // 120), "units")
-        
-        # Bind mouse wheel event
-        canvas.bind("<MouseWheel>", _on_mouse_wheel)  # For Windows and macOS
-        canvas.bind("<Button-4>", lambda event: canvas.yview_scroll(-1, "units"))  # For Linux
-        canvas.bind("<Button-5>", lambda event: canvas.yview_scroll(1, "units"))  # For Linux
-        
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        canvas.bind("<Enter>", lambda _: canvas.bind_all('<MouseWheel>', _on_mousewheel))
+        canvas.bind("<Leave>", lambda _: canvas.unbind_all('<MouseWheel>'))
+
         return scrollable_frame
     
     def update_drug_info(self, event=None):
@@ -5522,20 +5576,23 @@ class OncologyApp:
             else:
                 self.volume_result_var.set("Enter both amount and volume")
             
-            # Clinical notes (to be displayed in the calculator but not in the Word document)
+            # Store values for export
+            self.export_final_dose = final_dose
+            self.export_base_unit = base_unit
+
+            # Clinical notes (GUI only)
             clinical_notes = [
                 "Down syndrome: consider 15-25% dose reduction",
                 "Adjust for prior toxicity/reactions"
             ]
-            
-            # Modified result without clinical notes
-            result = f"{final_dose:.2f} {base_unit}"
-            self.dosage_result_var.set(result)
 
-            # Display notes in the calculator window
+            # Display in calculator
+            result_text = f"{final_dose:.2f} {base_unit}"
             if notes or clinical_notes:
                 all_notes = notes + clinical_notes
-                self.dosage_result_var.set(result + "\n\nNOTES:\n• " + "\n• ".join(all_notes))
+                result_text += "\n\nNOTES:\n• " + "\n• ".join(all_notes)
+            
+            self.dosage_result_var.set(result_text)
 
         except ValueError as ve:
             messagebox.showerror("Input Error", f"Invalid numeric value: {str(ve)}")
@@ -5543,7 +5600,7 @@ class OncologyApp:
             messagebox.showerror("Calculation Error", f"An error occurred: {str(e)}")
 
     def export_dosage_to_word(self):
-        """Generate clean Word document with all required fields"""
+        """Generate professional single-page chemotherapy order document"""
         try:
             from datetime import datetime
             import tempfile
@@ -5551,121 +5608,197 @@ class OncologyApp:
             import subprocess
             import sys
             from docx import Document
-            from docx.shared import Pt
-            from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-            
+            from docx.shared import Pt, Inches
+            from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_ALIGN_PARAGRAPH
+            from docx.enum.table import WD_ALIGN_VERTICAL
+
             # Create temporary file
             temp_dir = tempfile.mkdtemp()
-            filename = os.path.join(temp_dir, "Chemo_Order_Temp.docx")
+            filename = os.path.join(temp_dir, "Chemo_Order_Final.docx")
             
             doc = Document()
             
-            # Configure default font
+            # Configure default styles
             style = doc.styles['Normal']
             font = style.font
-            font.name = 'Arial'
+            font.name = 'Times New Roman'
             font.size = Pt(11)
 
-            # Hospital header
+            # Header Section
             header = doc.add_paragraph()
+            header.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
             header_run = header.add_run("TRIPOLI CHILDREN TEACHING HOSPITAL\nONCOLOGY DEPARTMENT")
             header_run.font.name = 'Arial'
-            header_run.font.size = Pt(12)  # Slightly smaller header
+            header_run.font.size = Pt(14)
             header_run.bold = True
-            header.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            doc.add_paragraph().add_run().add_break()
 
-            # Main order details
-            doc.add_paragraph().add_run('Chemotherapy Dosage Order').bold = True
-            doc.paragraphs[-1].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-            doc.add_paragraph(f"Generated: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+            # Document Title
+            title = doc.add_paragraph()
+            title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            title_run = title.add_run("CHEMOTHERAPY ADMINISTRATION ORDER")
+            title_run.font.size = Pt(12)
+            title_run.bold = True
+            title_run.underline = True
 
-            # Compact table for patient information
-            table = doc.add_table(rows=0, cols=4)
-            table.style = 'Table Grid'
-            for col in table.columns:
-                col.width = Pt(100)  # Narrower columns
+            # Generation Info
+            doc.add_paragraph(f"Generated: {datetime.now().strftime('%d %B %Y %H:%M')}", 
+                            style='Intense Quote').alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
 
-            # Patient data - keep essential fields only
-            compact_data = [
-                ("Patient Name", self.patient_name_var.get()),
-                ("DOB", self.dob_var.get()),
-                ("Weight", f"{self.patient_weight_var.get()} kg"),
-                ("BSA", f"{self.bsa_var.get()} m²"),
-                ("Protocol", self.protocol_var.get()),
-                ("Cycle", self.cycle_var.get()),
-                ("Day", self.day_var.get()),                
-                ("Drug", self.drug_var.get()),
-                ("Dose", self.dosage_result_var.get()),
-                ("Volume", self.volume_result_var.get())
+            # Patient Information Table (Wider layout)
+            doc.add_paragraph("\nPatient Information:", style='Heading 2')
+            patient_data = [
+                ["Patient Name:", self.patient_name_var.get(), "Date of Birth:", self.dob_var.get()],
+                ["Weight:", f"{self.patient_weight_var.get()} kg", "BSA:", f"{self.bsa_var.get()} m²"],
+                ["Diagnosis:", self.diagnosis_var.get(), "Protocol:", self.protocol_var.get()],
+                ["Cycle:", self.cycle_var.get(), "Day:", self.day_var.get(), "", ""]
             ]
+            
+            table = doc.add_table(rows=0, cols=4)
+            table.style = 'Light Shading'
+            for row in patient_data:
+                cells = table.add_row().cells
+                for i in range(4):
+                    cells[i].text = row[i] if i < len(row) else ""
+                    if i % 2 == 0:  # Make labels bold
+                        cells[i].paragraphs[0].runs[0].font.bold = True
+                    cells[i].width = Inches(1.8)
 
-            # Add compact rows
-            for i in range(0, len(compact_data), 2):
-                row = table.add_row().cells
-                pair = compact_data[i:i+2]
-                row[0].text = pair[0][0]
-                row[1].text = pair[0][1] or "  "
-                if len(pair) > 1:
-                    row[2].text = pair[1][0]
-                    row[3].text = pair[1][1] or "  "
+            # Treatment Details Section (Expanded)
+            doc.add_paragraph("\nTreatment Parameters:", style='Heading 2')
+            treatment_data = [
+                ["Drug Name:", self.drug_var.get()],
+                ["Calculated Dose:", f"{self.export_final_dose:.2f} {self.export_base_unit}"],
+                ["Max Dose:", f"{self.chemo_drugs[self.drug_var.get()]['dose'][1]} {self.export_base_unit}"],
+                ["Vial Strength:", f"{self.amount_var.get()} {self.export_base_unit}"],
+                ["Diluent Volume:", f"{self.volume_var.get()} mL"],
+                ["Admin. Volume:", self.volume_result_var.get().split('\n')[0]]
+            ]
+            
+            treatment_table = doc.add_table(rows=0, cols=2)
+            treatment_table.style = 'Light Shading'
+            for row in treatment_data:
+                cells = treatment_table.add_row().cells
+                cells[0].text = row[0]
+                cells[1].text = row[1]
+                cells[0].paragraphs[0].runs[0].font.bold = True
+                cells[0].width = Inches(2.2)
+                cells[1].width = Inches(3.2)
 
-            # Add spacing
-            doc.add_paragraph("\n")
-
-            # Verification section at bottom
-            verification = doc.add_paragraph()
-            verification.add_run("VERIFICATION\n").bold = True
-            verification.add_run(
-                "Total Infused Voulune: _______ml\n"
-                "Infusion Time: _______\n"
-                "Rate: _______ml/hr\n\n"
-                "Physician: _______________________ Date: ___/___/____\n"
-                "Pharmacist: _______________________ Date: ___/___/____\n"
-            )
-            verification.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-
-            # Drug information in smaller font after verification
+            # Drug Specifications Table (Revised)
             if self.drug_var.get() in self.chemo_drugs:
                 drug = self.drug_var.get()
                 data = self.chemo_drugs[drug]
                 
-                # Create compact drug info section
-                drug_header = doc.add_paragraph()
-                drug_header.add_run("DRUG INFORMATION").bold = True
-                drug_header.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-
-                # Key details table
-                info_table = doc.add_table(rows=0, cols=2)
-                info_table.style = 'Table Grid'
-                info_table.autofit = False
-                info_table.columns[0].width = Pt(120)
-                info_table.columns[1].width = Pt(300)
-
-                rows = [
-                    ("Dose Parameters", f"{data['dose'][0]} {data['dose'][2]} (Max: {data['dose'][1]})"),
-                    ("Side Effects", ", ".join(data["side_effects"][:3])),
-                    ("Compatible Fluids", ", ".join(data["compatible_fluids"][:3])),
-                    ("Incompatibilities", ", ".join([f"{k} ({v})" for k,v in data["incompatible_fluids"].items()][:2]) if data["incompatible_fluids"] else "None"),
-                    ("Photosensitive", "Yes" if data['photosensitive'] else "No")
+                doc.add_paragraph("\nDrug Specifications:", style='Heading 2')
+                spec_table = doc.add_table(rows=4, cols=2)
+                spec_table.style = 'Light Grid'
+                
+                # Header row
+                header_cells = spec_table.rows[0].cells
+                header_cells[0].text = "Parameter"
+                header_cells[1].text = "Details"
+                for cell in header_cells:
+                    cell.paragraphs[0].runs[0].bold = True
+                
+                # Data rows
+                spec_data = [
+                    ("Incompatibilities", "\n".join(
+                        [f"• {k} ({v})" for k,v in list(data['incompatible_fluids'].items())[:3]]
+                        if data['incompatible_fluids'] else "• None")),
+                    ("Drug Interactions", "\n".join(
+                        [f"• {k}: {v}" for k,v in list(data['interactions'].items())[:2]]
+                        if data['interactions'] else "• None")),
+                    ("Photosensitivity", "Yes" if data['photosensitive'] else "No"),
+                    ("Administration Notes", data['notes'][:120] + "...")
                 ]
+                
+                for i in range(1, 4):
+                    cells = spec_table.rows[i].cells
+                    cells[0].text = spec_data[i-1][0]
+                    cells[1].text = spec_data[i-1][1]
+                    cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-                for label, value in rows:
-                    row = info_table.add_row().cells
-                    row[0].text = label
-                    row[1].text = value
-                    for cell in row:
-                        cell.paragraphs[0].runs[0].font.size = Pt(9)
+            # Compact Verification Section
+            doc.add_paragraph("\nAdministration Details:", style='Heading 2')
+            
+            # Infusion parameters table (modified)
+            infusion_table = doc.add_table(rows=1, cols=3)
+            infusion_table.style = 'Light Shading'
+            infusion_table.autofit = False
+            
+            # Set column widths
+            for cell in infusion_table.columns[0].cells:
+                cell.width = Inches(2)
+            for cell in infusion_table.columns[1].cells:
+                cell.width = Inches(2.5)
+            for cell in infusion_table.columns[2].cells:
+                cell.width = Inches(2.5)
+            
+            # Header
+            header_cells = infusion_table.rows[0].cells
+            header_cells[0].text = "Parameter"
+            header_cells[1].text = "Calculation"
+            header_cells[2].text = "Verification"
+            for cell in header_cells:
+                cell.paragraphs[0].runs[0].bold = True
 
-                # Add notes in smallest font
-                notes = doc.add_paragraph()
-                notes.add_run("Special Notes: ").bold = True
-                notes.add_run(data['notes'][:150] + "...")  # Truncate long notes
-                notes.runs[0].font.size = Pt(9)
-                notes.runs[1].font.size = Pt(9)
+            # Add data row with actual values
+            row_cells = infusion_table.add_row().cells
+            row_cells[0].text = ("Infusion Details\n"
+                               f"Diluent: {self.dilution_fluid_var.get()}\n"
+                               f"Total Volume: {self.total_volume_var.get()} mL")
+            row_cells[1].text = (f"Infusion Duration: {self.infusion_duration_var.get()} hr\n"
+                                f"Infusion Rate: {self.infusion_rate_var.get()} mL/hr")
+            row_cells[2].text = "Verified By:\n\nSignature: ________________\nDate: __/__/____"
+            
+            # Format infusion table
+            for cell in row_cells:
+                cell.paragraphs[0].runs[0].font.size = Pt(10)
+                cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
-            # Save and open
+            # Enhanced Verification Section
+            doc.add_paragraph("\nFinal Verification:", style='Heading 2')
+            verification = doc.add_table(rows=2, cols=2)
+            verification.style = 'Light Shading'
+            
+            # Set column widths
+            verification.columns[0].width = Inches(3)
+            verification.columns[1].width = Inches(3)
+            
+            # Header cells
+            verification.cell(0,0).text = "PHARMACIST VERIFICATION"
+            verification.cell(0,1).text = "NURSING VERIFICATION"
+            for cell in verification.rows[0].cells:
+                cell.paragraphs[0].runs[0].font.size = Pt(12)
+                cell.paragraphs[0].runs[0].bold = True
+                cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Content cells
+            verification.cell(1,0).text = ("Name:\n\n\nSignature:\n\n\nDate:")
+            verification.cell(1,1).text = ("Name:\n\n\nSignature:\n\n\nDate:")
+            for cell in verification.rows[1].cells:
+                cell.paragraphs[0].runs[0].font.size = Pt(11)
+                cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+
+            # Single-page formatting adjustments
+            section = doc.sections[0]
+            section.page_height = Inches(11)
+            section.page_width = Inches(8.5)
+            section.top_margin = Inches(0.4)
+            section.bottom_margin = Inches(0.4)
+            section.left_margin = Inches(0.6)
+            section.right_margin = Inches(0.6)
+
+            # Reduce paragraph spacing
+            for paragraph in doc.paragraphs:
+                paragraph.paragraph_format.space_after = Pt(2)
+                paragraph.paragraph_format.space_before = Pt(2)
+
             doc.save(filename)
             
+            # Open the document
             if os.name == 'nt':
                 os.startfile(filename)
             elif os.name == 'posix':
