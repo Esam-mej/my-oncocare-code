@@ -39,6 +39,9 @@ from configparser import ConfigParser
 import configparser
 from tkinter import simpledialog
 import subprocess
+import logging
+logging.basicConfig(filename="log.txt", level=logging.DEBUG)
+logging.debug("Initializing Google Drive...")
     
 # Path to the JSON file
 DROPDOWN_FILE = 'dropdown_lists.json'
@@ -330,46 +333,44 @@ class GoogleDriveManager:
         self.initialize_drive()
 
     def initialize_drive(self):
-        """Initialize Google Drive connection with automatic token refresh"""
+        """Initialize Google Drive connection with automatic token refresh (safe for EXE)"""
         try:
-            token_path = 'token.json'
-            
-            # First try to load credentials
+            logging.debug("Starting Google Drive initialization...")
+            token_path = get_resource_path('token.json')
+            creds_path = get_resource_path('credentials.json')
+
             if os.path.exists(token_path):
                 try:
+                    logging.debug("Found token.json. Trying to load credentials.")
                     self.creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-                    # Force credential validation
                     if self.creds and self.creds.expired and self.creds.refresh_token:
+                        logging.debug("Refreshing expired token...")
                         self.creds.refresh(Request())
-                        # Save immediately after refresh
                         with open(token_path, 'w') as token:
                             token.write(self.creds.to_json())
+                        logging.debug("Token refreshed and saved.")
                 except (RefreshError, ValueError) as e:
-                    print(f"Token error: {e}. Starting fresh authentication...")
+                    logging.debug(f"Token error: {e}. Deleting token.json.")
                     os.remove(token_path)
                     self.creds = None
 
-            # If no valid credentials, start auth flow
             if not self.creds or not self.creds.valid:
-                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-                self.creds = flow.run_local_server(
-                    port=0,
-                    authorization_prompt_message='Please visit this URL to authorize OncoCare: {url}',
-                    success_message='Authentication complete! You may close this window.',
-                    open_browser=True
-                )
-                # Save new credentials
+                logging.debug("No valid token. Starting manual auth flow (run_console).")
+                flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
+                self.creds = flow.run_console()
                 with open(token_path, 'w') as token:
                     token.write(self.creds.to_json())
+                logging.debug("Manual auth complete. Token saved.")
 
             self.service = build('drive', 'v3', credentials=self.creds)
             self.initialized = True
+            logging.debug("Google Drive service connected.")
             self.setup_app_folders()
 
         except Exception as e:
-            print(f"Google Drive initialization failed: {e}")
+            logging.error(f"Google Drive initialization failed: {e}")
             self.initialized = False
-
+                        
     def setup_app_folders(self):
         """Set up application folder structure in Drive"""
         try:
