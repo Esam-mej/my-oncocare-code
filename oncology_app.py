@@ -5095,7 +5095,7 @@ class OncologyApp:
                 "notes": "Mesna protection required. Administer over 2-24 hours. Aggressive hydration (3L/m²/day)."
             },
             "Cytarabine": {
-                "dose": [100, 3000, "mg/m²"],
+                "dose": [75, 3000, "mg/m²"],
                 "side_effects": ["Myelosuppression", "Cerebellar toxicity", "Conjunctivitis", "Ara-C syndrome", "Anaphylaxis"],
                 "compatible_fluids": ["D5W", "NS"],
                 "incompatible_fluids": {
