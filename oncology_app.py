@@ -2,6 +2,7 @@ from docx.shared import Inches
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
+from tkinter import simpledialog
 import sys
 import os
 import tempfile
@@ -40,11 +41,24 @@ import configparser
 from tkinter import simpledialog
 import subprocess
 import logging
-logging.basicConfig(filename="log.txt", level=logging.DEBUG)
+log_dir = os.path.join(os.environ.get('APPDATA', '.'), 'OncoCareLogs')
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, "log.txt")
+logging.basicConfig(filename=log_file, level=logging.DEBUG)
 logging.debug("Initializing Google Drive...")
+import sys
+import traceback
+def global_exception_handler(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    messagebox.showerror("Critical Error", f"An unexpected error occurred:\n{exc_value}")
+
+sys.excepthook = global_exception_handler
     
 # Path to the JSON file
-DROPDOWN_FILE = 'dropdown_lists.json'
+DROPDOWN_FILE = os.path.abspath('dropdown_lists.json')
 
 def load_users_config():
     """Load user configuration from users_data.json"""
@@ -172,57 +186,9 @@ MALIGNANCIES = [
     "BRAIN T", "RHABDO", "RETINO", "HEPATO", "GERM CELL"
 ]
 
-DROPDOWN_OPTIONS = {
-    "GENDER": ["MALE", "FEMALE"],
-    "B_SYMPTOMS": ["FEVER", "NIGHT SWEAT", "WT LOSS", "NO B-SYMPTOMS"],
-    "EXAMINATION": [
-        "FEBRILE", "HEPATOMEGALLY", "SPLENOMEGALLY", "LYMPHADENOPATHY",
-        "TESTICULAR ENLARGMENT", "GUM HYPATROPHY", "CRANIAL PULSY",
-        "RACCON EYES", "BONY SWELLING", "JOINT SWELLING", "SUBCONJUNCTIVAL HE",
-        "HIGH BP", "HYPOTENSION", "OTHERS"
-    ],
-    "SYMPTOMS": [
-        "ASYMPTOMATIC", "FEVER", "BONE PAIN", "BRUSIS", "WT LOSS",
-        "NIGHT SWEATTING", "NECK SWELLING", "JOINT SWELLING",
-        "ABDOMINAL DISTENSION", "HEMATURIA", "FRACTURE", "PALLOR",
-        "VOMITTING", "DIARRHEA", "CONSTIPATION", "EPISTAXIS",
-        "HEMATEMESIS", "GUM BLEEDING", "MELENA", "HEMATOCHEZIA", "OTHERS"
-    ],
-    "SURGERY": ["INDICATED", "NOT INDICATED", "DONE"],
-    "SR_TYPE": [
-        "COMPLETE RESECTION", "DEBULKING", "PALLIATIVE",
-        "INCOMPLETE RESECTION", "DIAGNOSTIC &/OR STAGING"
-    ],
-    "STATE": ["ALIVE", "DECEASED", "MISSED FOLLOW UP"],
-    "STEROID_R": ["GOOD", "POOR"],
-    "TREATMENT_STAGE": [
-        "PRE PHASE", "INDUCTION", "CONSOLIDATION",
-        "MAINTENANCE", "OFF THERAPY"
-    ],
-    "RISK_GROUP": ["LRG", "SRG", "IRG", "HRG"],
-    "BMT": ["INDICATED", "NO INDICATION", "DONE", "UNKNOWN"],
-    "RADIOTHERAPY": ["INDICATED", "NOT INDICATED", "DONE"],
-    "NECROSIS_GRADE": [
-        "GRADE 1 <50%", "GRADE 2 >50%", "GRADE 3 >90%", "GRADE 4 >100%"
-    ],
-    "CSF": [
-        "INITIAL 0", "INITIAL 1", "INITIAL 2", "INITIAL 3",
-        "RELPASE 1", "RELAPSE 2", "RELAPSE 3"
-    ],
-    "STAGE": [
-        "1", "2", "3", "4", "4S", "5", "REFRACTORY 1",
-        "REFRACTORY 2", "REFRACTORY 3", "LOCAL", "METS"
-    ],
-    "THERAPY_SIDE_EFFECTS": [
-        "MTX TOXICITY", "LEUKOENCEPHALOPATHY", "HGE CYSTITIS",
-        "PERIPHERAL NEUROPATHY", "PULMONARY FIBROSIS",
-        "L-ASP. SENSITIVITY", "OTHERS"
-    ]
-}
-
 MALIGNANCY_FIELDS = {
     "ALL": [
-        "GROUP", "CYTOGENETIC", "CSF", "MRD", "STEROID_R", 
+        "RISK_GROUP", "CYTOGENETIC", "CSF", "MRD", "STEROID_R", 
         "TREATMENT_STAGE", "CYCLE", "RADIOTHERAPY", "BMT", 
         "STATE", "THERAPY_SIDE_EFFECTS", "NOTES"
     ],
@@ -232,7 +198,7 @@ MALIGNANCY_FIELDS = {
         "THERAPY_SIDE_EFFECTS", "NOTES"
     ],
     "LYMPHOMA": [
-        "GROUP", "STAGE", "CYTOGENETIC", "CSF", "MRD", 
+        "RISK_GROUP", "STAGE", "CYTOGENETIC", "CSF", "MRD", 
         "STEROID_R", "TREATMENT_STAGE", "CYCLE", 
         "RADIOTHERAPY", "BMT", "STATE", "THERAPY_SIDE_EFFECTS", 
         "NOTES"
@@ -250,37 +216,37 @@ MALIGNANCY_FIELDS = {
         "THERAPY_SIDE_EFFECTS", "NOTES"
     ],
     "NEUROBLASTOMA": [
-        "STAGE", "HISTOPATHOLOGY", "CYTOGENETIC", "SURGERY", 
+        "RISK_GROUP", "STAGE", "HISTOPATHOLOGY", "CYTOGENETIC", "SURGERY", 
         "SR_TYPE", "SR_DATE", "TREATMENT_STAGE", "CYCLE", 
         "RADIOTHERAPY", "BMT", "STATE", "THERAPY_SIDE_EFFECTS", 
         "NOTES"
     ],
     "BRAIN T": [
-        "GROUP", "STAGE", "GRADE", "HISTOPATHOLOGY", 
+        "RISK_GROUP", "STAGE", "GRADE", "HISTOPATHOLOGY", 
         "CYTOGENETIC", "SURGERY", "SR_TYPE", "SR_DATE", 
         "TREATMENT_STAGE", "CYCLE", "RADIOTHERAPY", "BMT", 
         "STATE", "THERAPY_SIDE_EFFECTS", "NOTES"
     ],
     "RHABDO": [
-        "GROUP", "STAGE", "HISTOPATHOLOGY", "CYTOGENETIC", 
+        "RISK_GROUP", "STAGE", "HISTOPATHOLOGY", "CYTOGENETIC", 
         "SURGERY", "SR_TYPE", "SR_DATE", "TREATMENT_STAGE", 
         "CYCLE", "RADIOTHERAPY", "BMT", "STATE", 
         "THERAPY_SIDE_EFFECTS", "NOTES"
     ],
     "RETINO": [
-        "GROUP", "STAGE", "GRADE", "HISTOPATHOLOGY", 
+        "RISK_GROUP", "STAGE", "GRADE", "HISTOPATHOLOGY", 
         "CYTOGENETIC", "SURGERY", "SR_TYPE", "SR_DATE", 
         "TREATMENT_STAGE", "CYCLE", "RADIOTHERAPY", "BMT", 
         "STATE", "THERAPY_SIDE_EFFECTS", "NOTES"
     ],
     "HEPATO": [
-        "GROUP", "STAGE", "GRADE", "HISTOPATHOLOGY", 
+        "RISK_GROUP", "STAGE", "GRADE", "HISTOPATHOLOGY", 
         "CYTOGENETIC", "SURGERY", "SR_TYPE", "SR_DATE", 
         "TREATMENT_STAGE", "CYCLE", "RADIOTHERAPY", "BMT", 
         "STATE", "THERAPY_SIDE_EFFECTS", "NOTES"
     ],
     "GERM CELL": [
-        "GROUP", "STAGE", "GRADE", "HISTOPATHOLOGY", 
+        "RISK_GROUP", "STAGE", "GRADE", "HISTOPATHOLOGY", 
         "CYTOGENETIC", "SURGERY", "SR_TYPE", "SR_DATE", 
         "TREATMENT_STAGE", "CYCLE", "RADIOTHERAPY", "BMT", 
         "STATE", "THERAPY_SIDE_EFFECTS", "NOTES"
@@ -323,6 +289,23 @@ SUPPORTED_EXTENSIONS = {
     'markup': ['.html', '.htm', '.xml', '.markdown']
 }
 
+def load_chemo_drugs():
+    try:
+        with open('chemo_drugs.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading chemo drugs: {e}")
+        return {}
+
+
+def load_antibiotics_data():
+    try:
+        with open('antibiotics.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading antibiotics data: {e}")
+        return {}
+
 class GoogleDriveManager:
     def __init__(self):
         self.service = None
@@ -331,6 +314,8 @@ class GoogleDriveManager:
         self.patients_folder_id = None
         self.creds = None  # Add this line
         self.initialize_drive()
+        self.chemo_drugs = load_chemo_drugs()
+        self.antibiotics_data = load_antibiotics_data()
 
     def initialize_drive(self):
         """Initialize Google Drive connection with automatic token refresh (safe for EXE)"""
@@ -413,54 +398,60 @@ class GoogleDriveManager:
                 self.setup_app_folders()
     
     def upload_file(self, file_path, file_name, folder_id=None):
-        """Upload a file to Google Drive with improved error handling"""
+        """Upload a file to Google Drive with correct update logic for parents field"""
         if not self.initialized:
             return False
-        
+
         try:
             # Check if file already exists
             query = f"name='{file_name}' and trashed=false"
             if folder_id:
                 query += f" and '{folder_id}' in parents"
-            
-            existing_files = self.service.files().list(q=query, fields="files(id, modifiedTime)").execute().get('files', [])
-            
+
+            existing_files = self.service.files().list(q=query, fields="files(id, modifiedTime, parents)").execute().get('files', [])
+
             file_metadata = {
                 'name': file_name
             }
-            
+
             if folder_id:
                 file_metadata['parents'] = [folder_id]
-            
+
             media = MediaFileUpload(file_path)
-            
+
             if existing_files:
-                # Get the existing file's modification time
-                drive_mtime = datetime.strptime(existing_files[0].get('modifiedTime'), '%Y-%m-%dT%H:%M:%S.%fZ').timestamp()
-                local_mtime = os.path.getmtime(file_path)
-                
-                # Only update if local file is newer
-                if local_mtime > drive_mtime:
-                    file_id = existing_files[0]['id']
-                    file = self.service.files().update(
+                file_id = existing_files[0]['id']
+                # Only update file content and metadata except parents
+                # If folder_id is different, move file
+                if folder_id and folder_id not in existing_files[0].get('parents', []):
+                    # Move file to new folder
+                    self.service.files().update(
                         fileId=file_id,
-                        body=file_metadata,
+                        addParents=folder_id,
+                        removeParents=",".join(existing_files[0].get('parents', [])),
+                        body={'name': file_name},
+                        media_body=media,
+                        fields='id'
+                    ).execute()
+                    print(f"Moved and updated file: {file_name}")
+                else:
+                    # Update file content only (do not touch parents)
+                    self.service.files().update(
+                        fileId=file_id,
+                        body={'name': file_name},
                         media_body=media,
                         fields='id'
                     ).execute()
                     print(f"Updated file: {file_name}")
-                else:
-                    print(f"File {file_name} is up to date in Drive")
-                    return True
             else:
                 # Create new file
-                file = self.service.files().create(
+                self.service.files().create(
                     body=file_metadata,
                     media_body=media,
                     fields='id'
                 ).execute()
                 print(f"Uploaded new file: {file_name}")
-            
+
             return True
         except HttpError as error:
             print(f"An error occurred while uploading file: {error}")
@@ -468,7 +459,7 @@ class GoogleDriveManager:
         except Exception as e:
             print(f"Error uploading file {file_name}: {e}")
             return False
-    
+            
     def download_file(self, file_id, save_path):
         """Download a file from Google Drive by file ID"""
         if not self.initialized:
@@ -528,20 +519,14 @@ class GoogleDriveManager:
         """Upload patient data to Google Drive"""
         if not self.initialized:
             return False
-        
         try:
-            # Save patient data to a temporary file
-            temp_file = "temp_patient_data.json"
-            with open(temp_file, 'w') as f:
-                json.dump(patient_data, f)
-            
-            # Upload to the app folder
+            import tempfile
+            with tempfile.NamedTemporaryFile('w', delete=False, suffix='.json') as tmp:
+                json.dump(patient_data, tmp)
+                temp_file = tmp.name
             file_name = f"patient_{patient_data['FILE NUMBER']}.json"
             success = self.upload_file(temp_file, file_name, self.app_folder_id)
-            
-            # Remove temporary file
             os.remove(temp_file)
-            
             return success
         except Exception as e:
             print(f"Error uploading patient data: {e}")
@@ -623,46 +608,37 @@ class GoogleDriveManager:
                 for item in results.get('files', [])
             }
             
-            # Process files for two-way sync
             upload_count = 0
             download_count = 0
-            
-            # Upload new or modified files to Drive
-            for rel_path, local_info in local_files.items():
-                file_name = os.path.basename(rel_path)
-                
-                # Skip unsupported file types
+            all_file_names = set(local_files.keys()) | set(drive_files.keys())
+            for file_name in all_file_names:
+                local_info = local_files.get(file_name)
+                drive_info = drive_files.get(file_name)
+                local_path = os.path.join(local_folder, file_name)
+                # Only sync supported files
                 if not self.is_supported_file(file_name):
                     continue
-                
-                if file_name not in drive_files:
-                    # New file - upload to Drive
+                if local_info and not drive_info:
+                    # Local only: upload
                     if self.upload_file(local_info['path'], file_name, drive_folder_id):
                         upload_count += 1
-                else:
-                    # File exists in both - compare modification times
-                    drive_info = drive_files[file_name]
-                    if local_info['mtime'] > drive_info['mtime']:
-                        # Local file is newer - upload to Drive
-                        if self.upload_file(local_info['path'], file_name, drive_folder_id):
-                            upload_count += 1
-            
-            # Download files from Drive that don't exist locally or are newer
-            for file_name, drive_info in drive_files.items():
-                local_path = os.path.join(local_folder, file_name)
-                
-                if not os.path.exists(local_path):
-                    # File doesn't exist locally - download
+                elif drive_info and not local_info:
+                    # Drive only: download
                     if self.download_file(drive_info['id'], local_path):
                         download_count += 1
-                else:
-                    # File exists - compare modification times
-                    local_mtime = os.path.getmtime(local_path)
-                    if drive_info['mtime'] > local_mtime:
-                        # Drive file is newer - download
+                elif local_info and drive_info:
+                    # Both exist: compare mtimes
+                    local_mtime = local_info['mtime']
+                    drive_mtime = drive_info['mtime']
+                    # Use 1 second tolerance to avoid unnecessary sync
+                    if local_mtime > drive_mtime + 1:
+                        if self.upload_file(local_info['path'], file_name, drive_folder_id):
+                            upload_count += 1
+                    elif drive_mtime > local_mtime + 1:
                         if self.download_file(drive_info['id'], local_path):
                             download_count += 1
-            
+                    # else: times are equal, do nothing
+
             return True, f"Sync complete. Uploaded: {upload_count}, Downloaded: {download_count}"
         except Exception as e:
             print(f"Error syncing patient files: {e}")
@@ -1026,39 +1002,263 @@ class OncologyApp:
         self.setup_keyboard_shortcuts()
         self.setup_login_screen()
 
+        self.chemo_drugs = load_chemo_drugs()
+        self.antibiotics_data = load_antibiotics_data()
         self.setup_protocols_config()
         self.setup_chemo_sheets_config()
         self.setup_drug_documentation_config()
         self.setup_fn_documentation_config()
 
+        self.inactivity_timeout_ms = 20 * 60 * 1000  # 20 minutes
+        self.inactivity_warning_ms = 1 * 60 * 1000   # 1 minute warning
+        self.inactivity_after_id = None
+        self.inactivity_warning_win = None
+        self._setup_inactivity_detection()
+
         # Initialize connection status
         self.internet_connected = False
         self.sync_in_progress = False
         self.last_sync_time = None
-        
-        # Initialize services
-        self.firebase = FirebaseManager()
-        self.drive = GoogleDriveManager()
-        
+
+        # --- DEFERRED CLOUD SERVICES ---
+        self.firebase = None
+        self.drive = None
+
         # Check and restore essential files
         self.ensure_essential_files()
-        
-        # Load data
+
+        # Load data (from local files)
         self.load_users()
         self.load_patient_data()
-        
+
         # Setup UI components
         self.setup_styles()
         self.setup_status_bar()
         self.check_internet_connection()
-        
+
         # Initialize F&N Documentation configuration
         self.setup_fn_documentation_config()
         self.current_user = os.getenv("USERNAME").lower()  # Get Windows username
-        
+
         # Final initialization
         self.executor = ThreadPoolExecutor(max_workers=4)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        # --- Start cloud services in background ---
+        threading.Thread(target=self.init_cloud_services, daemon=True).start()
+
+    def init_cloud_services(self):
+        """Initialize Firebase and Google Drive in the background."""
+        def update_cloud_status(msg, color="black"):
+            # Thread-safe UI update
+            self.root.after(0, lambda: self.cloud_status_label.config(text=f"Cloud: {msg}", foreground=color))
+        try:
+            update_cloud_status("Connecting...", "orange")
+            self.firebase = FirebaseManager()
+            if self.firebase.initialized:
+                update_cloud_status("Firebase Connected", "green")
+            else:
+                update_cloud_status("Firebase Offline", "red")
+        except Exception as e:
+            update_cloud_status("Firebase Error", "red")
+            self.firebase = None
+        try:
+            self.drive = GoogleDriveManager()
+            if self.drive.initialized:
+                update_cloud_status("Drive Connected", "green")
+            else:
+                update_cloud_status("Drive Offline", "red")
+        except Exception as e:
+            update_cloud_status("Drive Error", "red")
+            self.drive = None
+
+    def _setup_inactivity_detection(self):
+        """Bind events to reset inactivity timer on user activity."""
+        events = ["<Motion>", "<Key>", "<Button>", "<MouseWheel>"]
+        for event in events:
+            self.root.bind_all(event, self._reset_inactivity_timer)
+        self._reset_inactivity_timer()
+
+    def _reset_inactivity_timer(self, event=None):
+        """Reset inactivity timer on user activity."""
+        if self.inactivity_after_id:
+            self.root.after_cancel(self.inactivity_after_id)
+        self.inactivity_after_id = self.root.after(self.inactivity_timeout_ms - self.inactivity_warning_ms, self._show_inactivity_warning)
+
+    def _show_inactivity_warning(self):
+        """Show warning dialog before auto sign-out."""
+        if self.inactivity_warning_win and self.inactivity_warning_win.winfo_exists():
+            return  # Already showing
+
+        self.inactivity_warning_win = tk.Toplevel(self.root)
+        self.inactivity_warning_win.title("Inactivity Warning")
+        self.inactivity_warning_win.geometry("400x150")
+        self.inactivity_warning_win.grab_set()
+        ttk.Label(self.inactivity_warning_win, text="You have been inactive for a while.\nYou will be signed out in 1 minute.", font=('Helvetica', 12)).pack(pady=20)
+        ttk.Button(self.inactivity_warning_win, text="Stay Logged In", command=self._cancel_signout).pack(pady=10)
+        # Start countdown to sign out
+        self.inactivity_after_id = self.root.after(self.inactivity_warning_ms, self._auto_signout)
+
+    def _cancel_signout(self):
+        """Cancel auto sign-out and reset timer."""
+        if self.inactivity_warning_win and self.inactivity_warning_win.winfo_exists():
+            self.inactivity_warning_win.destroy()
+        self._reset_inactivity_timer()
+
+    def _auto_signout(self):
+        """Sign out the user after inactivity."""
+        if self.inactivity_warning_win and self.inactivity_warning_win.winfo_exists():
+            self.inactivity_warning_win.destroy()
+        messagebox.showinfo("Signed Out", "You have been signed out due to inactivity.")
+        self.setup_login_screen()
+
+    def manage_drug_json(self):
+        """In-app editor for chemo_drugs.json and antibiotics.json with save confirmation and unsaved changes prompt."""
+        import json
+        from tkinter import messagebox, simpledialog
+
+        def load_json(file):
+            try:
+                with open(file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load {file}: {e}")
+                return {}
+
+        def save_json(file, data):
+            try:
+                with open(file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                messagebox.showinfo("Saved", f"{file} saved successfully.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save {file}: {e}")
+
+        editor_win = tk.Toplevel(self.root)
+        editor_win.title("Manage Drug Info (JSON)")
+        editor_win.geometry("950x600")
+
+        file_var = tk.StringVar(value="chemo_drugs.json")
+        ttk.Label(editor_win, text="Select file:").pack(pady=5)
+        file_combo = ttk.Combobox(editor_win, textvariable=file_var, values=["chemo_drugs.json", "antibiotics.json"], state="readonly")
+        file_combo.pack(pady=5)
+
+        drug_listbox = tk.Listbox(editor_win, width=30)
+        drug_listbox.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=10)
+        scrollbar = ttk.Scrollbar(editor_win, orient="vertical", command=drug_listbox.yview)
+        scrollbar.pack(side=tk.LEFT, fill=tk.Y)
+        drug_listbox.config(yscrollcommand=scrollbar.set)
+
+        details_text = tk.Text(editor_win, width=60)
+        details_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Track which drug is being edited
+        current_drug = {"name": None}
+
+        # Track if there are unsaved changes
+        unsaved = {"flag": False}
+
+        def refresh_drug_list():
+            drugs = load_json(file_var.get())
+            drug_listbox.delete(0, tk.END)
+            for drug in sorted(drugs.keys()):
+                drug_listbox.insert(tk.END, drug)
+            details_text.delete("1.0", tk.END)
+            unsaved["flag"] = False
+
+        def show_drug_details(event=None):
+            drugs = load_json(file_var.get())
+            sel = drug_listbox.curselection()
+            if not sel:
+                return
+            drug = drug_listbox.get(sel[0])
+            current_drug["name"] = drug
+            details = drugs.get(drug, {})
+            details_text.delete("1.0", tk.END)
+            details_text.insert(tk.END, json.dumps(details, indent=2, ensure_ascii=False))
+            unsaved["flag"] = False
+
+        def save_drug_details():
+            drugs = load_json(file_var.get())
+            drug = current_drug["name"]
+            if not drug:
+                messagebox.showwarning("Warning", "Select a drug to save.")
+                return
+            try:
+                new_details = json.loads(details_text.get("1.0", tk.END))
+                drugs[drug] = new_details
+                save_json(file_var.get(), drugs)
+                unsaved["flag"] = False
+                refresh_drug_list()
+                # Reselect the drug after refresh
+                idx = list(sorted(drugs.keys())).index(drug)
+                drug_listbox.selection_set(idx)
+                drug_listbox.activate(idx)
+                show_drug_details()
+                # Reload in main app
+                if file_var.get() == "chemo_drugs.json":
+                    self.chemo_drugs = load_chemo_drugs()
+                elif file_var.get() == "antibiotics.json":
+                    self.antibiotics_data = load_antibiotics_data()
+                messagebox.showinfo("Saved", f"{file_var.get()} saved and reloaded successfully.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Invalid JSON: {e}")
+
+        def on_select_drug(event=None):
+            if unsaved["flag"]:
+                if messagebox.askyesno("Unsaved Changes", "You have unsaved changes. Save now?"):
+                    save_drug_details()
+            show_drug_details()
+
+        def add_drug():
+            drugs = load_json(file_var.get())
+            new_drug = simpledialog.askstring("Add Drug", "Enter new drug name:")
+            if new_drug and new_drug not in drugs:
+                drugs[new_drug] = {}
+                save_json(file_var.get(), drugs)
+                refresh_drug_list()
+
+        def delete_drug():
+            drugs = load_json(file_var.get())
+            sel = drug_listbox.curselection()
+            if not sel:
+                return
+            drug = drug_listbox.get(sel[0])
+            if messagebox.askyesno("Delete", f"Delete {drug}?"):
+                del drugs[drug]
+                save_json(file_var.get(), drugs)
+                refresh_drug_list()
+
+        def on_text_edit(event=None):
+            unsaved["flag"] = True
+
+        def on_select_drug(event=None):
+            if unsaved["flag"]:
+                if messagebox.askyesno("Unsaved Changes", "You have unsaved changes. Save now?"):
+                    save_drug_details()
+            show_drug_details()
+
+        def on_file_change(event=None):
+            if unsaved["flag"]:
+                if messagebox.askyesno("Unsaved Changes", "You have unsaved changes. Save now?"):
+                    save_drug_details()
+            refresh_drug_list()
+
+        # Buttons
+        btn_frame = ttk.Frame(editor_win)
+        btn_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=10)
+
+        ttk.Button(btn_frame, text="Add Drug", command=add_drug).pack(fill=tk.X, pady=3)
+        ttk.Button(btn_frame, text="Delete Drug", command=delete_drug).pack(fill=tk.X, pady=3)
+        ttk.Button(btn_frame, text="Save Changes", command=save_drug_details).pack(fill=tk.X, pady=3)
+        ttk.Button(btn_frame, text="Reload", command=refresh_drug_list).pack(fill=tk.X, pady=3)
+        ttk.Button(btn_frame, text="Close", command=editor_win.destroy).pack(fill=tk.X, pady=3)
+        
+        # Bindings
+        drug_listbox.bind("<<ListboxSelect>>", on_select_drug)
+        file_combo.bind("<<ComboboxSelected>>", on_file_change)
+        details_text.bind("<KeyRelease>", on_text_edit)
+
+        refresh_drug_list()
 
     def setup_fn_documentation_config(self):
         """Setup configuration for F&N Documentation software"""
@@ -1238,76 +1438,13 @@ class OncologyApp:
             messagebox.showinfo("Success", f"Path updated to:\\n{new_path}")
             dialog.destroy()
 
-    def get_fn_documentation_path(self):
-        """Get the path to F&N Documentation software"""
-        self.fn_config.read(self.fn_config_file)
-        return self.fn_config['FN_DOCUMENTATION']['path']
-
-    def set_fn_documentation_path(self, new_path):
-        """Set new path for F&N Documentation software"""
-        self.fn_config['FN_DOCUMENTATION']['path'] = new_path
-        with open(self.fn_config_file, 'w') as configfile:
-            self.fn_config.write(configfile)
-
-    def handle_fn_documentation(self):
-        """Handle F&N Documentation button click"""
-        software_path = self.get_fn_documentation_path()
-        
-        dialog = tk.Toplevel(self.root)
-        dialog.title("F&N Documentation")
-        dialog.geometry("400x200")
-        
-        msg = f"Do you want to start F&N Documentation?\n\nCurrent path: {software_path}"
-        ttk.Label(dialog, text=msg, wraplength=380).pack(pady=20)
-        
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(pady=10)
-        
-        ttk.Button(btn_frame, text="Launch", 
-                  command=lambda: self.launch_fn_documentation(dialog),
-                  style='Green.TButton').pack(side=tk.LEFT, padx=10)
-        
-        if self.current_user.lower() == "mej.esam":
-            ttk.Button(btn_frame, text="Change Path", 
-                      command=lambda: self.change_fn_documentation_path(dialog),
-                      style='Blue.TButton').pack(side=tk.LEFT, padx=10)
-        
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=10)
-
-    def launch_fn_documentation(self, dialog=None):
-        """Launch the F&N Documentation software"""
-        try:
-            software_path = self.get_fn_documentation_path()
-            if not os.path.exists(software_path):
-                messagebox.showerror("Error", f"Software not found at:\n{software_path}")
-                return
-            
-            subprocess.Popen(software_path)
-            if dialog:
-                dialog.destroy()
-            messagebox.showinfo("Success", "F&N Documentation started successfully!")
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not start software: {str(e)}")
-
-    def change_fn_documentation_path(self, dialog):
-        """Change the path to F&N Documentation software"""
-        new_path = filedialog.askopenfilename(
-            title="Select F&N Documentation executable",
-            filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
-        )
-        
-        if new_path:
-            self.set_fn_documentation_path(new_path)
-            messagebox.showinfo("Success", f"Path updated to:\n{new_path}")
-            dialog.destroy()
-
     def ensure_essential_files(self):
         """Guaranteed file creation with multiple fallbacks"""
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
                 if not os.path.exists(DROPDOWN_FILE):
-                    if self.firebase.initialized:
+                    if self.firebase and self.firebase.initialized:
                         if self.fetch_dropdowns_from_firebase(force=True):
                             return
                     # Fallback to embedded defaults
@@ -1335,7 +1472,7 @@ class OncologyApp:
         """Force fetch dropdowns with emergency defaults"""
         try:
             success = False
-            firebase_dropdowns = self.firebase.get_all_dropdowns()
+            firebase_dropdowns = self.firebase.get_all_dropdowns() if self.firebase and self.firebase.initialized else {}
             
             if firebase_dropdowns.get('data'):
                 temp_path = f"{DROPDOWN_FILE}.tmp"
@@ -1484,6 +1621,10 @@ class OncologyApp:
         self.internet_indicator.pack(side=tk.LEFT, padx=5)
         self.update_internet_indicator()
         
+        # Add cloud status
+        self.cloud_status_label = ttk.Label(self.status_frame, text="Cloud: Initializing...", style='Status.TLabel')
+        self.cloud_status_label.pack(side=tk.LEFT, padx=10)
+
         # Sync status
         self.sync_status = ttk.Label(self.status_frame, text="", style='Status.TLabel')
         self.sync_status.pack(side=tk.LEFT, padx=10)
@@ -1512,10 +1653,13 @@ class OncologyApp:
             self.patient_data = []
     
     def save_patient_data(self):
-        """Save patient data to file"""
-        with open('patients_data.json', 'w') as f:
+        """Save patient data to file atomically"""
+        import tempfile
+        temp_path = 'patients_data.json.tmp'
+        with open(temp_path, 'w') as f:
             json.dump(self.patient_data, f, indent=4)
-    
+        os.replace(temp_path, 'patients_data.json')
+
     def update_internet_indicator(self):
         """Update the internet connection indicator"""
         color = "green" if self.internet_connected else "red"
@@ -1548,7 +1692,7 @@ class OncologyApp:
     def load_users(self):
         """Load user data from file or Firebase"""
         try:
-            if self.firebase.initialized:
+            if self.firebase and self.firebase.initialized:
                 firebase_users = self.firebase.get_all_users()
                 if firebase_users:
                     self.users = {u['username']: u for u in firebase_users}
@@ -1796,8 +1940,10 @@ class OncologyApp:
                   style='Clinical.TButton').pack(fill=tk.X, pady=2)
         ttk.Button(clinical_frame, text="⚠️ Extravasation", command=self.show_extravasation_management,
                   style='Clinical.TButton').pack(fill=tk.X, pady=2)
-        ttk.Button(clinical_frame, text="📄 F&N Documentation", command=self.handle_fn_documentation,
-                  style='Clinical.TButton').pack(fill=tk.X, pady=2)
+
+        if self.users[self.current_user]["role"] in ["admin", "editor", "doctor"]:
+            ttk.Button(clinical_frame, text="📄 F&N Documentation", command=self.launch_fn_app,
+                      style='Clinical.TButton').pack(fill=tk.X, pady=2)
     
         # Section 3: Chemotherapy
         chemo_frame = ttk.LabelFrame(button_grid, text="CHEMOTHERAPY", 
@@ -1833,6 +1979,8 @@ class OncologyApp:
             ttk.Button(data_frame, text="🔄 Restore", command=self.restore_data,
                        style='Data.TButton').pack(fill=tk.X, pady=2)
             ttk.Button(data_frame, text="📋 Manage Drop-downs", command=self.manage_dropdowns,
+                       style='Data.TButton').pack(fill=tk.X, pady=2)
+            ttk.Button(data_frame, text="💊 Manage Drug Info", command=self.manage_drug_json,
                        style='Data.TButton').pack(fill=tk.X, pady=2)
 
         # Section 5: Administration
@@ -1899,17 +2047,32 @@ class OncologyApp:
                             foreground='#7f8c8d', background=self.light_color)
 
     def get_dropdown_options(self):
-        """Properly load dropdown values from JSON structure"""
         try:
             with open(DROPDOWN_FILE, 'r') as f:
                 dropdown_data = json.load(f)
                 return {k: v['values'] for k, v in dropdown_data.get('data', {}).items()}
         except Exception as e:
             print(f"Error loading dropdowns: {e}")
-            return DROPDOWN_OPTIONS  # Fallback to defaults
+            # Fallback to minimal hardcoded defaults if file missing/corrupt
+            return {
+                "GENDER": ["MALE", "FEMALE"],
+                "RISK_GROUP": ["LRG", "SRG", "IRG", "HRG", "REFRACTORY", "RELAPSE"]
+            }
     
+    def launch_fn_app(self):
+        """Launch the built-in F&N Documentation app in a new window."""
+        import tkinter as tk
+        try:
+            from fn_app import FNApp  # If you put FNApp in a separate file
+        except ImportError:
+            # If you pasted FNApp at the bottom of this file, just use FNApp directly
+            pass
+
+        fn_window = tk.Toplevel(self.root)
+        FNApp(fn_window)
+
     def manage_dropdowns(self):
-        """Fixed dropdown manager with legacy data support"""
+        """Robust dropdown manager that always shows lists and values."""
         if hasattr(self, 'dropdown_win') and self.dropdown_win.winfo_exists():
             self.dropdown_win.lift()
             return
@@ -1924,7 +2087,7 @@ class OncologyApp:
 
         # Dropdown selection
         ttk.Label(main_frame, text="Select Drop-down List:").pack(pady=5)
-        
+
         self.current_dropdown = tk.StringVar()
         self.dropdown_combo = ttk.Combobox(
             main_frame,
@@ -1932,11 +2095,11 @@ class OncologyApp:
             state="readonly"
         )
         self.dropdown_combo.pack(fill=tk.X, pady=5)
-        
+
         # Values list
         list_frame = ttk.Frame(main_frame)
         list_frame.pack(fill=tk.BOTH, expand=True)
-        
+
         self.values_listbox = tk.Listbox(
             list_frame,
             selectmode=tk.SINGLE,
@@ -1946,7 +2109,7 @@ class OncologyApp:
         scrollbar = ttk.Scrollbar(list_frame)
         self.values_listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.values_listbox.yview)
-        
+
         self.values_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
@@ -1958,7 +2121,7 @@ class OncologyApp:
         # Buttons
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X)
-        
+
         ttk.Button(btn_frame, text="Add", command=self._add_value).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Update", command=self._update_value).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Delete", command=self._delete_value).pack(side=tk.LEFT, padx=5)
@@ -1972,37 +2135,76 @@ class OncologyApp:
             self._update_values_list()
 
     def _load_dropdown_options(self):
-        """Load dropdown names with legacy data support"""
-        options = self._load_dropdown_data()
-        dropdown_names = []
-        
-        for name, values in options.items():
-            # Convert legacy list format to new dictionary format
+        """Load dropdown names with legacy and error-proof support."""
+        try:
+            with open(DROPDOWN_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if 'data' in data:
+                    options = data['data']
+                else:
+                    options = data
+        except Exception:
+            # Fallback to defaults if file missing/corrupt
+            options = {
+                'GENDER': {'values': ['MALE', 'FEMALE'], 'LAST_MODIFIED': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            }
+
+        # Convert legacy list format to new dictionary format
+        changed = False
+        for name, values in list(options.items()):
             if isinstance(values, list):
                 options[name] = {
                     'values': values,
                     'LAST_MODIFIED': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 }
-                self._save_dropdown_data(options)
-            
-            dropdown_names.append(name)
-        
+                changed = True
+        if changed:
+            self._save_dropdown_data(options)
+
+        dropdown_names = list(options.keys())
         self.dropdown_combo['values'] = sorted(dropdown_names)
 
     def _update_values_list(self):
-        """Update values listbox with proper data structure"""
+        """Update values listbox with proper data structure."""
         self.values_listbox.delete(0, tk.END)
         selected = self.current_dropdown.get()
         options = self._load_dropdown_data()
-        
         if selected in options:
-            # Handle both old list format and new dictionary format
             values = options[selected]['values'] if isinstance(options[selected], dict) else options[selected]
             for value in values:
                 self.values_listbox.insert(tk.END, value)
 
+    def _load_dropdown_data(self):
+        """Always return dict of dropdowns in new format."""
+        try:
+            with open(DROPDOWN_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if 'data' in data:
+                    return data['data']
+                return data
+        except Exception:
+            # Default if file missing/corrupt
+            return {
+                'GENDER': {'values': ['MALE', 'FEMALE'], 'LAST_MODIFIED': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            }
+
+    def _save_dropdown_data(self, options):
+        """Always save as {'data': ...} and update LAST_MODIFIED."""
+        for name, dropdown in options.items():
+            dropdown['LAST_MODIFIED'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        save_data = {'data': options}
+        temp_file = os.path.join(os.path.dirname(__file__), DROPDOWN_FILE + '.tmp')
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            json.dump(save_data, f, indent=2, ensure_ascii=False)
+        os.replace(temp_file, DROPDOWN_FILE)
+        # Push to Firebase if connected
+        if hasattr(self, 'firebase') and self.firebase and self.firebase.initialized:
+            try:
+                self.firebase.sync_dropdowns(save_data['data'])
+            except Exception as e:
+                print(f"Dropdown Firebase sync error: {e}")
+
     def _add_value(self):
-        """Add new value to current dropdown"""
         dropdown = self.current_dropdown.get()
         new_value = self.value_var.get().strip()
         options = self._load_dropdown_data()
@@ -2014,27 +2216,24 @@ class OncologyApp:
             messagebox.showwarning("Warning", "Enter a value")
             return
 
-        # Initialize dropdown if not exists
         if dropdown not in options:
             options[dropdown] = {
                 'values': [],
                 'LAST_MODIFIED': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
 
-        # Check if value exists
         existing_values = [v.lower() for v in options[dropdown]['values']]
         if new_value.lower() in existing_values:
             messagebox.showwarning("Warning", "Value already exists")
             return
 
         options[dropdown]['values'].append(new_value)
-        options[dropdown]['LAST_MODIFIED'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self._save_dropdown_data(options)
-        self._update_values_list()
-        self.value_var.set("")
-
+        # Destroy and reopen the window to force reload
+        self.dropdown_win.destroy()
+        self.manage_dropdowns()
+        
     def _update_value(self):
-        """Update existing value"""
         dropdown = self.current_dropdown.get()
         new_value = self.value_var.get().strip()
         options = self._load_dropdown_data()
@@ -2049,19 +2248,19 @@ class OncologyApp:
         if new_value == old_value:
             return
 
-        # Check if new value already exists
         existing_values = [v.lower() for v in options[dropdown]['values'] if v != old_value]
         if new_value.lower() in existing_values:
             messagebox.showwarning("Warning", "Value already exists")
             return
 
         options[dropdown]['values'][index] = new_value
-        options[dropdown]['LAST_MODIFIED'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self._save_dropdown_data(options)
+        options = self._load_dropdown_data()
+        self._load_dropdown_options()
+        self.current_dropdown.set(dropdown)
         self._update_values_list()
 
     def _delete_value(self):
-        """Delete selected value"""
         dropdown = self.current_dropdown.get()
         options = self._load_dropdown_data()
 
@@ -2073,8 +2272,10 @@ class OncologyApp:
 
         if messagebox.askyesno("Confirm", "Delete this value?"):
             del options[dropdown]['values'][index]
-            options[dropdown]['LAST_MODIFIED'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self._save_dropdown_data(options)
+            options = self._load_dropdown_data()
+            self._load_dropdown_options()
+            self.current_dropdown.set(dropdown)
             self._update_values_list()
 
     def _populate_entry_from_selection(self):
@@ -2086,38 +2287,6 @@ class OncologyApp:
         except IndexError:
             pass
 
-    def _load_dropdown_data(self):
-        """Load dropdown data with version handling"""
-        try:
-            with open(DROPDOWN_FILE, 'r') as f:
-                data = json.load(f)
-                # Handle both old and new formats
-                if 'data' in data:
-                    return data['data']
-                return data
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {"GENDER": {"values": ["MALE", "FEMALE"], "LAST_MODIFIED": datetime.now().strftime('%Y-%m-%d %H:%M:%S')}}
-        
-    def _save_dropdown_data(self, data=None):
-        """Save dropdown data with versioning"""
-        if data is None:
-            data = self.dropdown_data
-            
-        # Ensure proper format
-        save_data = {'data': data} if not isinstance(data, dict) or 'data' not in data else data
-        
-        # Add/modify timestamps
-        for name, dropdown in save_data['data'].items():
-            if 'LAST_MODIFIED' not in dropdown:
-                dropdown['LAST_MODIFIED'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Atomic write
-        temp_file = os.path.join(os.path.dirname(__file__), DROPDOWN_FILE + '.tmp')
-        with open(temp_file, 'w') as f:
-            json.dump(save_data, f, indent=2)
-        
-        os.replace(temp_file, DROPDOWN_FILE)
-        
     def start_sync(self):
         """Initiate synchronization process"""
         if self.sync_in_progress:
@@ -3741,7 +3910,7 @@ class OncologyApp:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
-        
+
         # Configure age groups
         self.age_groups = [
             "0-30 days (Neonate)",
@@ -3759,651 +3928,6 @@ class OncologyApp:
             "Post-Chemotherapy Sepsis",
             "CNS Infection Coverage"
         ]
-        
-        # Expanded antibiotics data with oncology-specific information
-        self.antibiotics_data = {
-            "MEROPENEM": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 8 hours"},
-                    "1-6 years (Young child)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 8 hours"},
-                    "6-12 years (Older child)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 8 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 20, "max_dose": 40, "max_total": 2000, "frequency": "Every 8 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Dextrose >5%", "Other beta-lactams", "Aminoglycosides"],
-                "interactions": {
-                    "Probenecid": "Decreases renal clearance",
-                    "Valproic acid": "Reduces levels (avoid combination)",
-                    "Warfarin": "Increased INR risk"
-                },
-                "oncology_notes": {
-                    "penetration": "Excellent CNS penetration at higher doses",
-                    "neutropenia": "First-line in febrile neutropenia protocols",
-                    "mucositis": "Covers Gram-negatives including Pseudomonas",
-                    "renal_adjust": "Reduce dose by 50% if eGFR <30",
-                    "compatibility": "Safe with most chemotherapy regimens",
-                    "monitoring": "Monitor seizure risk with high doses"
-                },
-                "notes": "First-line for febrile neutropenia. Higher doses for CNS infections."
-            },
-
-            "AMIKACIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 15, "max_dose": 20, "max_total": 1500, "frequency": "Every 24 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 15, "max_dose": 22.5, "max_total": 1500, "frequency": "Every 24 hours"},
-                    "1-6 years (Young child)": {"min_dose": 15, "max_dose": 22.5, "max_total": 1500, "frequency": "Every 24 hours"},
-                    "6-12 years (Older child)": {"min_dose": 15, "max_dose": 22.5, "max_total": 1500, "frequency": "Every 24 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 15, "max_dose": 22.5, "max_total": 1500, "frequency": "Every 24 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Penicillins", "Cephalosporins", "Heparin"],
-                "interactions": {
-                    "Vancomycin": "Increased nephrotoxicity",
-                    "Diuretics": "Ototoxicity risk",
-                    "Cisplatin": "Increased toxicity"
-                },
-                "oncology_notes": {
-                    "penetration": "Poor CNS penetration",
-                    "neutropenia": "Synergistic with beta-lactams for Gram-negative coverage",
-                    "mucositis": "No direct activity",
-                    "renal_adjust": "Extend interval to 36-48h if CrCl <30",
-                    "compatibility": "Avoid concurrent nephrotoxic chemo",
-                    "monitoring": "Trough <5 mg/L, peak 20-30 mg/L"
-                },
-                "notes": "Monitor levels. Once daily dosing preferred."
-            },
-
-            "CEFTRIAXONE (ROCEPHINE)": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 50, "max_dose": 80, "max_total": 4000, "frequency": "Every 24 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 50, "max_dose": 100, "max_total": 4000, "frequency": "Every 12-24 hours"},
-                    "1-6 years (Young child)": {"min_dose": 50, "max_dose": 100, "max_total": 4000, "frequency": "Every 12-24 hours"},
-                    "6-12 years (Older child)": {"min_dose": 50, "max_dose": 100, "max_total": 4000, "frequency": "Every 12-24 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 50, "max_dose": 100, "max_total": 4000, "frequency": "Every 12-24 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Calcium-containing solutions", "Aminoglycosides"],
-                "interactions": {
-                    "Warfarin": "Increased effect",
-                    "Calcium": "Precipitation risk (especially neonates)",
-                    "Probenecid": "Increased levels"
-                },
-                "oncology_notes": {
-                    "penetration": "Good CSF penetration in meningitis",
-                    "neutropenia": "Alternative for stable patients",
-                    "mucositis": "Covers viridans streptococci",
-                    "renal_adjust": "No adjustment needed",
-                    "compatibility": "Avoid with calcium-containing fluids",
-                    "monitoring": "Watch for biliary pseudolithiasis"
-                },
-                "notes": "Avoid in hyperbilirubinemic neonates."
-            },
-
-            "CIPROFLOXACIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 10, "max_dose": 15, "max_total": 800, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 12 hours"},
-                    "1-6 years (Young child)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 12 hours"},
-                    "6-12 years (Older child)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 12 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 12 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Divalent cation solutions", "TPN"],
-                "interactions": {
-                    "Antacids": "Reduced absorption",
-                    "Theophylline": "Increased levels",
-                    "Warfarin": "Increased INR"
-                },
-                "oncology_notes": {
-                    "penetration": "Good tissue penetration",
-                    "neutropenia": "Avoid as monotherapy",
-                    "mucositis": "Gram-negative coverage only",
-                    "renal_adjust": "Reduce dose by 50% if CrCl <30",
-                    "compatibility": "Separate from oral supplements",
-                    "monitoring": "Watch for tendonitis"
-                },
-                "notes": "Reserve for resistant gram-negative infections."
-            },
-
-            "TAZOCIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 8 hours"},
-                    "1-6 years (Young child)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 6 hours"},
-                    "6-12 years (Older child)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 6 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 80, "max_dose": 100, "max_total": 4000, "frequency": "Every 6 hours"}
-                },
-                "unit": "mg (piperacillin component)",
-                "incompatible": ["Aminoglycosides", "Vancomycin"],
-                "interactions": {
-                    "Probenecid": "Increased levels",
-                    "Anticoagulants": "Increased bleeding risk",
-                    "Methotrexate": "Increased toxicity"
-                },
-                "oncology_notes": {
-                    "penetration": "Good tissue penetration",
-                    "neutropenia": "Alternative antipseudomonal agent",
-                    "mucositis": "Broad Gram-negative coverage",
-                    "renal_adjust": "Adjust frequency based on CrCl",
-                    "compatibility": "Monitor platelets with chemotherapy",
-                    "monitoring": "Check electrolytes for hypokalemia"
-                },
-                "notes": "Piperacillin/tazobactam 8:1 ratio."
-            },
-
-            "VANCOMYCIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 24 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"},
-                    "1-6 years (Young child)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 8 hours"},
-                    "6-12 years (Older child)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 6 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 10, "max_dose": 15, "max_total": 1000, "frequency": "Every 6 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Alkaline solutions", "Beta-lactams", "Heparin"],
-                "interactions": {
-                    "Aminoglycosides": "Nephrotoxicity risk",
-                    "Loop diuretics": "Ototoxicity risk",
-                    "NSAIDs": "Nephrotoxicity"
-                },
-                "oncology_notes": {
-                    "penetration": "Poor CSF penetration",
-                    "neutropenia": "Add for suspected MRSA",
-                    "mucositis": "Covers coagulase-negative staph",
-                    "renal_adjust": "Use trough-guided dosing",
-                    "compatibility": "Monitor with nephrotoxic chemo",
-                    "monitoring": "Trough 15-20 mg/L for serious infections"
-                },
-                "notes": "Pre-medicate for red man syndrome."
-            },
-
-            "METRONIDAZOLE (FLAGYL)": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 8 hours"},
-                    "1-6 years (Young child)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 8 hours"},
-                    "6-12 years (Older child)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 8 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 7.5, "max_dose": 10, "max_total": 500, "frequency": "Every 8 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Aluminum-containing solutions"],
-                "interactions": {
-                    "Alcohol": "Disulfiram-like reaction",
-                    "Warfarin": "Increased effect",
-                    "Phenytoin": "Increased levels"
-                },
-                "oncology_notes": {
-                    "penetration": "Excellent anaerobic coverage",
-                    "neutropenia": "Add for abdominal symptoms",
-                    "mucositis": "Covers anaerobic overgrowth",
-                    "renal_adjust": "No adjustment needed",
-                    "compatibility": "Safe with most regimens",
-                    "monitoring": "Neurological toxicity at high doses"
-                },
-                "notes": "IV form contains sodium."
-            },
-
-            "FLUCONAZOLE": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 48 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 24 hours"},
-                    "1-6 years (Young child)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 24 hours"},
-                    "6-12 years (Older child)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 24 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 6, "max_dose": 12, "max_total": 800, "frequency": "Every 24 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "Phenytoin": "Increased levels",
-                    "Warfarin": "Increased INR",
-                    "Rifampin": "Decreased fluconazole levels"
-                },
-                "oncology_notes": {
-                    "penetration": "Good CSF penetration",
-                    "neutropenia": "Prophylaxis in high-risk patients",
-                    "mucositis": "Candida coverage",
-                    "renal_adjust": "Double dosing interval if CrCl <50",
-                    "compatibility": "Avoid with vinca alkaloids",
-                    "monitoring": "Check LFTs weekly"
-                },
-                "notes": "Loading dose recommended."
-            },
-
-            "AMPHOTERICIN B": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"},
-                    "1-6 years (Young child)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"},
-                    "6-12 years (Older child)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 0.5, "max_dose": 1, "max_total": 50, "frequency": "Every 24 hours"}
-                },
-                "unit": "mg/kg",
-                "incompatible": ["Saline solutions", "Other antifungals"],
-                "interactions": {
-                    "Cyclosporine": "Increased nephrotoxicity",
-                    "Diuretics": "Hypokalemia risk",
-                    "Azoles": "Antagonism"
-                },
-                "oncology_notes": {
-                    "penetration": "Poor CSF penetration",
-                    "neutropenia": "Empiric fungal coverage",
-                    "mucositis": "No direct activity",
-                    "renal_adjust": "Liposomal form preferred in renal impairment",
-                    "compatibility": "Nephrotoxic with cisplatin",
-                    "monitoring": "Daily electrolytes, renal function"
-                },
-                "notes": "Pre-medicate with antipyretics/antihistamines."
-            },
-
-            "VORICONAZOLE": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"},
-                    "1-6 years (Young child)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"},
-                    "6-12 years (Older child)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 7, "max_dose": 8, "max_total": 400, "frequency": "Every 12 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "Rifampin": "Decreased levels",
-                    "Carbamazepine": "Decreased levels",
-                    "Warfarin": "Increased INR"
-                },
-                "oncology_notes": {
-                    "penetration": "Good CSF penetration",
-                    "neutropenia": "First-line for aspergillosis",
-                    "mucositis": "No direct activity",
-                    "renal_adjust": "IV form contraindicated in CrCl <50",
-                    "compatibility": "Adjust vincristine doses",
-                    "monitoring": "Therapeutic drug monitoring essential"
-                },
-                "notes": "Visual disturbances common."
-            },
-
-            "AUGMENTIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 25, "max_dose": 30, "max_total": 1750, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 25, "max_dose": 45, "max_total": 1750, "frequency": "Every 8 hours"},
-                    "1-6 years (Young child)": {"min_dose": 25, "max_dose": 45, "max_total": 1750, "frequency": "Every 8 hours"},
-                    "6-12 years (Older child)": {"min_dose": 25, "max_dose": 45, "max_total": 1750, "frequency": "Every 8 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 25, "max_dose": 45, "max_total": 1750, "frequency": "Every 8 hours"}
-                },
-                "unit": "mg (amoxicillin component)",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "Probenecid": "Increased levels",
-                    "Allopurinol": "Increased rash risk",
-                    "Warfarin": "Increased INR"
-                },
-                "oncology_notes": {
-                    "penetration": "Good oral bioavailability",
-                    "neutropenia": "Not for empiric therapy",
-                    "mucositis": "Community-acquired infections",
-                    "renal_adjust": "Adjust based on CrCl",
-                    "compatibility": "Diarrhea risk with chemo",
-                    "monitoring": "Watch for C.diff"
-                },
-                "notes": "Amoxicillin/clavulanate 7:1 ratio."
-            },
-
-            "ACYCLOVIR": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"},
-                    "1-6 years (Young child)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"},
-                    "6-12 years (Older child)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 10, "max_dose": 20, "max_total": 800, "frequency": "Every 8 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Alkaline solutions"],
-                "interactions": {
-                    "Probenecid": "Increased levels",
-                    "Nephrotoxic drugs": "Increased toxicity",
-                    "Zidovudine": "Neurotoxicity"
-                },
-                "oncology_notes": {
-                    "penetration": "Good CSF penetration",
-                    "neutropenia": "HSV prophylaxis in stem cell transplants",
-                    "mucositis": "Herpetic lesions coverage",
-                    "renal_adjust": "Adjust dose for CrCl <50",
-                    "compatibility": "Hydrate well with cyclophosphamide",
-                    "monitoring": "Renal function every 48h"
-                },
-                "notes": "Higher doses for HSV encephalitis."
-            },
-
-            "AMPICILLIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
-                    "1-6 years (Young child)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
-                    "6-12 years (Older child)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Aminoglycosides"],
-                "interactions": {
-                    "Probenecid": "Increased levels",
-                    "Allopurinol": "Increased rash risk",
-                    "Warfarin": "Increased INR"
-                },
-                "oncology_notes": {
-                    "penetration": "Limited CSF penetration",
-                    "neutropenia": "Listeria coverage",
-                    "mucositis": "Gram-positive coverage",
-                    "renal_adjust": "Adjust frequency for CrCl <10",
-                    "compatibility": "Monitor with methotrexate",
-                    "monitoring": "Rash common in EBV patients"
-                },
-                "notes": "Adjust dose in renal impairment."
-            },
-
-            "CLARITHROMYCIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 7.5, "max_dose": 10, "max_total": 1000, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 7.5, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"},
-                    "1-6 years (Young child)": {"min_dose": 7.5, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"},
-                    "6-12 years (Older child)": {"min_dose": 7.5, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 7.5, "max_dose": 15, "max_total": 1000, "frequency": "Every 12 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "Digoxin": "Increased levels",
-                    "Theophylline": "Increased levels",
-                    "Warfarin": "Increased INR"
-                },
-                "oncology_notes": {
-                    "penetration": "Good intracellular penetration",
-                    "neutropenia": "Atypical coverage in allergies",
-                    "mucositis": "Mycoplasma coverage",
-                    "renal_adjust": "Reduce dose by 50% if CrCl <30",
-                    "compatibility": "QT prolongation with anthracyclines",
-                    "monitoring": "ECG for QT interval"
-                },
-                "notes": "QT prolongation risk."
-            },
-
-            "CEFTAZIDIME": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
-                    "1-6 years (Young child)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
-                    "6-12 years (Older child)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Aminoglycosides", "Vancomycin"],
-                "interactions": {
-                    "Probenecid": "Increased levels",
-                    "Loop diuretics": "Nephrotoxicity risk"
-                },
-                "oncology_notes": {
-                    "penetration": "Limited CNS penetration",
-                    "neutropenia": "Pseudomonas coverage",
-                    "mucositis": "Gram-negative spectrum",
-                    "renal_adjust": "Adjust for CrCl <50",
-                    "compatibility": "Safe with most regimens",
-                    "monitoring": "Watch for neurotoxicity"
-                },
-                "notes": "Adjust dose in renal impairment."
-            },
-
-            "CLOXACILLIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
-                    "1-6 years (Young child)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
-                    "6-12 years (Older child)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 25, "max_dose": 50, "max_total": 2000, "frequency": "Every 6 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Aminoglycosides"],
-                "interactions": {
-                    "Probenecid": "Increased levels",
-                    "Allopurinol": "Increased rash risk"
-                },
-                "oncology_notes": {
-                    "penetration": "Poor CSF penetration",
-                    "neutropenia": "MSSA coverage",
-                    "mucositis": "Skin/soft tissue infections",
-                    "renal_adjust": "No adjustment needed",
-                    "compatibility": "Monitor INR with warfarin",
-                    "monitoring": "Hepatotoxicity rare"
-                },
-                "notes": "For MSSA infections."
-            },
-
-            "CLINDAMYCIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 5, "max_dose": 7.5, "max_total": 600, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 5, "max_dose": 10, "max_total": 600, "frequency": "Every 8 hours"},
-                    "1-6 years (Young child)": {"min_dose": 5, "max_dose": 10, "max_total": 600, "frequency": "Every 6-8 hours"},
-                    "6-12 years (Older child)": {"min_dose": 5, "max_dose": 10, "max_total": 600, "frequency": "Every 6-8 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 5, "max_dose": 10, "max_total": 600, "frequency": "Every 6-8 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Aminoglycosides"],
-                "interactions": {
-                    "Neuromuscular blockers": "Enhanced blockade",
-                    "Erythromycin": "Antagonism"
-                },
-                "oncology_notes": {
-                    "penetration": "Good bone penetration",
-                    "neutropenia": "Anaerobic coverage",
-                    "mucositis": "Necrotizing infections",
-                    "renal_adjust": "No adjustment needed",
-                    "compatibility": "High C.diff risk with chemo",
-                    "monitoring": "Watch for diarrhea"
-                },
-                "notes": "C. diff risk."
-            },
-
-            "COLISTIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 2.5, "max_dose": 3, "max_total": 300, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 2.5, "max_dose": 5, "max_total": 300, "frequency": "Every 12 hours"},
-                    "1-6 years (Young child)": {"min_dose": 2.5, "max_dose": 5, "max_total": 300, "frequency": "Every 12 hours"},
-                    "6-12 years (Older child)": {"min_dose": 2.5, "max_dose": 5, "max_total": 300, "frequency": "Every 12 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 2.5, "max_dose": 5, "max_total": 300, "frequency": "Every 12 hours"}
-                },
-                "unit": "mg (CBA)",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "Aminoglycosides": "Increased nephrotoxicity",
-                    "Neuromuscular blockers": "Enhanced blockade"
-                },
-                "oncology_notes": {
-                    "penetration": "Limited CSF penetration",
-                    "neutropenia": "MDR Gram-negative infections",
-                    "mucositis": "No direct activity",
-                    "renal_adjust": "Use ideal body weight",
-                    "compatibility": "High nephrotoxicity risk",
-                    "monitoring": "Daily renal function tests"
-                },
-                "notes": "For MDR gram-negative infections."
-            },
-
-            "GENTAMICIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"},
-                    "1-6 years (Young child)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"},
-                    "6-12 years (Older child)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 5, "max_dose": 7.5, "max_total": 400, "frequency": "Every 24 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Penicillins", "Cephalosporins", "Vancomycin"],
-                "interactions": {
-                    "Vancomycin": "Synergistic nephrotoxicity",
-                    "Loop diuretics": "Ototoxicity",
-                    "NSAIDs": "Nephrotoxicity"
-                },
-                "oncology_notes": {
-                    "penetration": "Synergistic with beta-lactams",
-                    "neutropenia": "Gram-negative synergy",
-                    "mucositis": "No direct activity",
-                    "renal_adjust": "Extended interval dosing",
-                    "compatibility": "Avoid concurrent nephrotoxins",
-                    "monitoring": "Trough <1 mg/L, peak 20-30 mg/L"
-                },
-                "notes": "Once daily dosing preferred."
-            },
-
-            "CEFEPIME": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
-                    "1-6 years (Young child)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
-                    "6-12 years (Older child)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 30, "max_dose": 50, "max_total": 2000, "frequency": "Every 8 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["Aminoglycosides", "Metronidazole"],
-                "interactions": {
-                    "Aminoglycosides": "Nephrotoxicity",
-                    "Probenecid": "Increased levels"
-                },
-                "oncology_notes": {
-                    "penetration": "Good CSF penetration",
-                    "neutropenia": "Antipseudomonal coverage",
-                    "mucositis": "Broad Gram-negative spectrum",
-                    "renal_adjust": "Adjust for CrCl <60",
-                    "compatibility": "Safe with most regimens",
-                    "monitoring": "Neurotoxicity risk at high doses"
-                },
-                "notes": "4th gen cephalosporin."
-            },
-
-            "LINEZOLID": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 8 hours"},
-                    "1-6 years (Young child)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 8 hours"},
-                    "6-12 years (Older child)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 8 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 10, "max_dose": 12, "max_total": 600, "frequency": "Every 12 hours"}
-                },
-                "unit": "mg",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "SSRIs": "Serotonin syndrome risk",
-                    "MAOIs": "Hypertensive crisis",
-                    "Adrenergics": "Increased pressor response"
-                },
-                "oncology_notes": {
-                    "penetration": "Good tissue penetration",
-                    "neutropenia": "VRE/MRSA coverage",
-                    "mucositis": "Gram-positive coverage",
-                    "renal_adjust": "No adjustment needed",
-                    "compatibility": "Monitor platelets with chemo",
-                    "monitoring": "Weekly CBC for myelosuppression"
-                },
-                "notes": "Limited course recommended."
-            },
-
-            "DAPTOMYCIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"},
-                    "1-6 years (Young child)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"},
-                    "6-12 years (Older child)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 4, "max_dose": 6, "max_total": 500, "frequency": "Every 24 hours"}
-                },
-                "unit": "mg/kg",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "Statins": "Increased rhabdomyolysis risk",
-                    "Tobramycin": "Increased CPK"
-                },
-                "oncology_notes": {
-                    "penetration": "Poor CSF penetration",
-                    "neutropenia": "MRSA/VRE bacteremia",
-                    "mucositis": "No direct activity",
-                    "renal_adjust": "Adjust dose for CrCl <30",
-                    "compatibility": "Avoid with myeloablative chemo",
-                    "monitoring": "Weekly CPK levels"
-                },
-                "notes": "Not for pulmonary infections."
-            },
-
-            "CASPOFUNGIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 25, "max_dose": 50, "max_total": 70, "frequency": "Every 24 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 25, "max_dose": 50, "max_total": 70, "frequency": "Every 24 hours"},
-                    "1-6 years (Young child)": {"min_dose": 25, "max_dose": 50, "max_total": 70, "frequency": "Every 24 hours"},
-                    "6-12 years (Older child)": {"min_dose": 25, "max_dose": 50, "max_total": 70, "frequency": "Every 24 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 50, "max_dose": 70, "max_total": 70, "frequency": "Every 24 hours"}
-                },
-                "unit": "mg/m²",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "Cyclosporine": "Increased caspofungin levels",
-                    "Tacrolimus": "Decreased tacrolimus levels"
-                },
-                "oncology_notes": {
-                    "penetration": "Good for invasive candidiasis",
-                    "neutropenia": "Aspergillosis treatment",
-                    "mucositis": "No direct activity",
-                    "renal_adjust": "No adjustment needed",
-                    "compatibility": "Monitor with immunosuppressants",
-                    "monitoring": "Liver function tests weekly"
-                },
-                "notes": "Loading dose required."
-            },
-
-            "MICAFUNGIN": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"},
-                    "1-6 years (Young child)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"},
-                    "6-12 years (Older child)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 2, "max_dose": 4, "max_total": 150, "frequency": "Every 24 hours"}
-                },
-                "unit": "mg/kg",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "Sirolimus": "Increased levels",
-                    "Nifedipine": "Increased levels"
-                },
-                "oncology_notes": {
-                    "penetration": "Good for candidemia",
-                    "neutropenia": "Fungal prophylaxis",
-                    "mucositis": "Candida coverage",
-                    "renal_adjust": "No adjustment needed",
-                    "compatibility": "Safe with TPN",
-                    "monitoring": "Monitor liver enzymes"
-                },
-                "notes": "No loading dose needed."
-            },
-
-            "TRIMETHOPRIM-SULFAMETHOXAZOLE": {
-                "age_groups": {
-                    "0-30 days (Neonate)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"},
-                    "1 month-1 year (Infant)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"},
-                    "1-6 years (Young child)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"},
-                    "6-12 years (Older child)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"},
-                    "12+ years (Adolescent)": {"min_dose": 5, "max_dose": 10, "max_total": 320, "frequency": "Every 12 hours"}
-                },
-                "unit": "mg/kg (TMP component)",
-                "incompatible": ["None known"],
-                "interactions": {
-                    "Warfarin": "Increased INR",
-                    "Phenytoin": "Increased levels",
-                    "Methotrexate": "Increased toxicity"
-                },
-                "oncology_notes": {
-                    "penetration": "Good for PJP prophylaxis",
-                    "neutropenia": "PJP prevention",
-                    "mucositis": "No direct activity",
-                    "renal_adjust": "Avoid if CrCl <15",
-                    "compatibility": "High risk with methotrexate",
-                    "monitoring": "CBC twice weekly"
-                },
-                "notes": "Myelosuppression risk."
-            }
-        }
         
         # UI Elements
         ttk.Label(scrollable_frame, text="Pediatric Oncology Antibiotics Calculator", 
@@ -4511,6 +4035,14 @@ class OncologyApp:
         # Configure grid weights
         scrollable_frame.columnconfigure(4, weight=1)
         scrollable_frame.rowconfigure(6, weight=1)
+
+    def load_antibiotics_data():
+        try:
+            with open('antibiotics.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading antibiotics data: {e}")
+            return {}
 
     def calculate_antibiotics(self):
         """Calculate doses and check interactions"""
@@ -4928,321 +4460,6 @@ class OncologyApp:
         # Right panel - Drug Info
         right_panel = ttk.Frame(main_container, padding="5 5 5 5")
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        
-        # Chemotherapy drugs data (same as your enhanced version)
-        self.chemo_drugs = {
-            "Vincristine": {
-                "dose": [1.5, 2, "mg/m²"],
-                "side_effects": ["Neurotoxicity", "Constipation", "Peripheral neuropathy", "SIADH", "Jaw pain"],
-                "compatible_fluids": ["NS", "D5W"],
-                "incompatible_fluids": {
-                    "Bicarbonate solutions": "pH >7 causes precipitation",
-                    "Furosemide": "Forms immediate precipitate",
-                    "Ceftriaxone": "Forms insoluble complex",
-                    "Heparin": "Physical incompatibility",
-                    "Mitomycin": "Mutual inactivation"
-                },
-                "interactions": {
-                    "L-asparaginase": "Increased neurotoxicity (administer vincristine first)",
-                    "Phenytoin": "Reduces phenytoin levels by 50%",
-                    "Itraconazole": "Increased neurotoxicity risk",
-                    "Erythromycin": "Increases vincristine toxicity",
-                    "CYP3A4 inhibitors": "Increased toxicity (avoid concurrent use)"
-                },
-                "photosensitive": False,
-                "notes": "Must be administered through central line or free-flowing IV. Administer over 1-2 minutes. Severe vesicant."
-            },
-            "Dactinomycin": {
-                "dose": [0.015, 2.5, "mg/m²"],
-                "side_effects": ["Myelosuppression", "Mucositis", "Hepatotoxicity", "Radiation recall", "Extravasation injury"],
-                "compatible_fluids": ["NS", "D5W"],
-                "incompatible_fluids": {
-                    "Dexamethasone": "Chemical degradation",
-                    "Vancomycin": "Forms haze",
-                    "Heparin": "Precipitate formation"
-                },
-                "interactions": {
-                    "Radiation therapy": "Enhanced radiation recall effect",
-                    "Live vaccines": "Avoid for 3 months post-treatment",
-                    "Phenobarbital": "Reduced dactinomycin efficacy"
-                },
-                "photosensitive": False,
-                "notes": "Severe vesicant. Administer through central line. Monitor for secondary malignancies."
-            },
-            "Doxorubicin": {
-                "dose": [30, 60, "mg/m²"],
-                "side_effects": ["Cardiotoxicity", "Myelosuppression", "Alopecia", "Radiation recall", "Red urine"],
-                "compatible_fluids": ["NS"],
-                "incompatible_fluids": {
-                    "Heparin": "Forms precipitate",
-                    "5-FU": "Chemical degradation",
-                    "Alkaline solutions": "pH instability causes degradation",
-                    "Dexamethasone": "Forms precipitate",
-                    "Ceftriaxone": "Incompatible at Y-site"
-                },
-                "interactions": {
-                    "Cyclophosphamide": "Increased cardiotoxicity risk",
-                    "Verapamil": "Increased intracellular concentration",
-                    "Trastuzumab": "Severe cardiac dysfunction risk",
-                    "Paclitaxel": "Altered doxorubicin clearance"
-                },
-                "photosensitive": False,
-                "notes": "Cardiac monitoring required (MUGA/ECHO). Cumulative lifetime dose limit 550mg/m². Severe vesicant."
-            },
-            "Cyclophosphamide": {
-                "dose": [1000, 2000, "mg/m²"],
-                "side_effects": ["Hemorrhagic cystitis", "Myelosuppression", "Nausea", "SIADH", "Cardiotoxicity"],
-                "compatible_fluids": ["NS", "D5W"],
-                "incompatible_fluids": {
-                    "Amphotericin B": "Increased nephrotoxicity",
-                    "Chloramphenicol": "Reduced efficacy"
-                },
-                "interactions": {
-                    "Allopurinol": "Increased myelosuppression",
-                    "Succinylcholine": "Prolonged neuromuscular blockade",
-                    "Warfarin": "Increased anticoagulant effect",
-                    "Digoxin": "Reduced absorption"
-                },
-                "photosensitive": False,
-                "notes": "Mesna protection required for doses >1000mg/m². Aggressive hydration (3000mL/m²/day)."
-            },
-            "Methotrexate": {
-                "dose": [200, 15000, "mg/m²"],
-                "side_effects": ["Myelosuppression", "Mucositis", "Nephrotoxicity", "Hepatotoxicity", "Neurotoxicity"],
-                "compatible_fluids": ["D5W"],
-                "incompatible_fluids": {
-                    "NS": "Increased precipitation risk in chloride solutions",
-                    "Lactated Ringer's": "Calcium forms complex with MTX",
-                    "Proton pump inhibitors": "Reduced renal clearance",
-                    "Penicillins": "Increased MTX toxicity",
-                    "NSAIDs": "Competitive tubular secretion"
-                },
-                "interactions": {
-                    "NSAIDs": "Increased MTX toxicity (avoid)",
-                    "Probenecid": "Reduced renal excretion",
-                    "Sulfonamides": "Increased myelosuppression",
-                    "Theophylline": "Increased theophylline levels"
-                },
-                "photosensitive": True,
-                "notes": "Leucovorin rescue required for high-dose therapy. Urine pH monitoring (maintain >7)."
-            },
-            "Cisplatin": {
-                "dose": [100, 120, "mg/m²"],
-                "side_effects": ["Nephrotoxicity", "Ototoxicity", "Neuropathy", "Hypomagnesemia", "Anaphylaxis"],
-                "compatible_fluids": ["NS"],
-                "incompatible_fluids": {
-                    "D5W": "Decreased stability in dextrose",
-                    "Aluminum-containing solutions": "Forms black precipitate",
-                    "Bicarbonate": "Forms precipitate",
-                    "Paclitaxel": "Incompatible at Y-site"
-                },
-                "interactions": {
-                    "Aminoglycosides": "Increased nephrotoxicity (avoid)",
-                    "Phenytoin": "Reduced phenytoin absorption",
-                    "Diuretics": "Increased ototoxicity risk",
-                    "Live vaccines": "Avoid for 3 months"
-                },
-                "photosensitive": False,
-                "notes": "Aggressive hydration required (3L/day). Magnesium supplementation often needed. Administer over 2-6 hours."
-            },
-            "Carboplatin": {
-                "dose": [600, 800, "mg/m²"],
-                "side_effects": ["Myelosuppression", "Nausea", "Peripheral neuropathy", "Ototoxicity", "Hypersensitivity"],
-                "compatible_fluids": ["D5W", "NS"],
-                "incompatible_fluids": {
-                    "Aluminum-containing solutions": "Forms precipitate",
-                    "Amifostine": "Chemical interaction"
-                },
-                "interactions": {
-                    "Nephrotoxic drugs": "Additive renal toxicity",
-                    "Live vaccines": "Avoid concurrent use",
-                    "Phenytoin": "Reduced levels"
-                },
-                "photosensitive": False,
-                "notes": "Dose based on AUC calculation preferred. Administer over 15-60 minutes."
-            },
-            "Etoposide": {
-                "dose": [100, 500, "mg/m²"],
-                "side_effects": ["Myelosuppression", "Hypotension", "Alopecia", "Anaphylaxis", "Secondary malignancies"],
-                "compatible_fluids": ["NS", "D5W"],
-                "incompatible_fluids": {
-                    "Heparin": "Forms precipitate",
-                    "Cefepime": "Physical incompatibility",
-                    "Filgrastim": "Incompatible at Y-site"
-                },
-                "interactions": {
-                    "Warfarin": "Increased anticoagulant effect",
-                    "Cyclosporine": "Increased etoposide levels",
-                    "St. John's Wort": "Reduced efficacy"
-                },
-                "photosensitive": True,
-                "notes": "Administer over 30-60 minutes to prevent hypotension. Dilute to <0.4mg/mL concentration."
-            },
-            "Ifosfamide": {
-                "dose": [1800, 3000, "mg/m²"],
-                "side_effects": ["Hemorrhagic cystitis", "Neurotoxicity", "Nephrotoxicity", "SIADH", "Cardiotoxicity"],
-                "compatible_fluids": ["D5W", "NS"],
-                "incompatible_fluids": {
-                    "Mesna": "Chemical interaction if mixed directly",
-                    "Cisplatin": "Increased neurotoxicity"
-                },
-                "interactions": {
-                    "CNS depressants": "Increased neurotoxicity risk",
-                    "Warfarin": "Increased anticoagulant effect",
-                    "Phenobarbital": "Increased metabolism"
-                },
-                "photosensitive": False,
-                "notes": "Mesna protection required. Administer over 2-24 hours. Aggressive hydration (3L/m²/day)."
-            },
-            "Cytarabine": {
-                "dose": [75, 3000, "mg/m²"],
-                "side_effects": ["Myelosuppression", "Cerebellar toxicity", "Conjunctivitis", "Ara-C syndrome", "Anaphylaxis"],
-                "compatible_fluids": ["D5W", "NS"],
-                "incompatible_fluids": {
-                    "Gentamicin": "Mutual inactivation",
-                    "5-FU": "Antagonistic effect",
-                    "Heparin": "Forms precipitate"
-                },
-                "interactions": {
-                    "Digoxin": "Reduced digoxin absorption",
-                    "Live vaccines": "Avoid concurrent use",
-                    "Flucytosine": "Reduced efficacy"
-                },
-                "photosensitive": False,
-                "notes": "High-dose regimen requires steroid eye drops prophylaxis. Administer over 1-3 hours."
-            },
-            "Daunorubicin": {
-                "dose": [25, 45, "mg/m²"],
-                "side_effects": ["Cardiotoxicity", "Myelosuppression", "Red urine", "Mucositis", "Radiation recall"],
-                "compatible_fluids": ["D5W", "NS"],
-                "incompatible_fluids": {
-                    "Heparin": "Forms precipitate",
-                    "Alkaline solutions": "Causes degradation",
-                    "Dexamethasone": "Physical incompatibility"
-                },
-                "interactions": {
-                    "Cyclophosphamide": "Increased myocardial damage",
-                    "Trastuzumab": "Synergistic cardiotoxicity",
-                    "CYP3A4 inhibitors": "Increased serum levels"
-                },
-                "photosensitive": False,
-                "notes": "Cumulative lifetime dose limit 550mg/m². Cardiac monitoring required. Severe vesicant."
-            },
-            "Asparaginase": {
-                "dose": [5000, 10000, "IU/m²"],
-                "side_effects": ["Allergic reactions", "Pancreatitis", "Hyperglycemia", "Coagulopathy", "Hepatotoxicity"],
-                "compatible_fluids": ["NS"],
-                "incompatible_fluids": {
-                    "Dextrose solutions": "Reduced stability",
-                    "Dexamethasone": "Forms haze",
-                    "Vancomycin": "Physical incompatibility"
-                },
-                "interactions": {
-                    "Anticoagulants": "Increased bleeding risk",
-                    "Methotrexate": "Reduced efficacy",
-                    "Vaccines": "Avoid live vaccines"
-                },
-                "photosensitive": True,
-                "notes": "Requires test dose for hypersensitivity. Monitor amylase/lipase. Administer over 1-2 hours."
-            },
-            "Melphalan": {
-                "dose": [10, 20, "mg/m²"],
-                "side_effects": ["Myelosuppression", "Nausea/vomiting", "Secondary malignancies", "Pulmonary fibrosis"],
-                "compatible_fluids": ["NS"],
-                "incompatible_fluids": {
-                    "D5W": "Reduced stability",
-                    "Ciprofloxacin": "Chemical interaction"
-                },
-                "interactions": {
-                    "Cyclosporine": "Increased nephrotoxicity",
-                    "Nalidixic acid": "Severe hemorrhagic colitis",
-                    "Live vaccines": "Contraindicated"
-                },
-                "photosensitive": False,
-                "notes": "Administer via central line. Premedicate with antiemetics. Handle with cytotoxic precautions."
-            },
-            "Thioguanine (6-TG)": {
-                "dose": [75, 100, "mg/m²"],
-                "side_effects": ["Hepatotoxicity", "Myelosuppression", "Hyperuricemia", "Mucositis"],
-                "compatible_fluids": ["D5W"],
-                "incompatible_fluids": {
-                    "Allopurinol": "Increased toxicity risk",
-                    "Cytarabine": "Synergistic toxicity"
-                },
-                "interactions": {
-                    "Allopurinol": "Requires dose reduction",
-                    "Warfarin": "Increased anticoagulation",
-                    "Live vaccines": "Avoid concurrent use"
-                },
-                "photosensitive": True,
-                "notes": "Monitor liver function tests. Usually administered orally. Adjust dose for TPMT deficiency."
-            },
-            "Bleomycin": {
-                "dose": [10, 20, "units/m²"],
-                "side_effects": ["Pulmonary fibrosis", "Fever/chills", "Skin toxicity", "Hypersensitivity"],
-                "compatible_fluids": ["NS", "D5W"],
-                "incompatible_fluids": {
-                    "Aminophylline": "Forms precipitate",
-                    "Dexamethasone": "Physical incompatibility"
-                },
-                "interactions": {
-                    "Oxygen therapy": "Increased pulmonary toxicity",
-                    "Cisplatin": "Synergistic toxicity",
-                    "Radiation": "Enhanced skin reactions"
-                },
-                "photosensitive": False,
-                "notes": "Cumulative lifetime dose limit 400 units. Monitor pulmonary function tests. Premedicate with steroids."
-            },
-            "Dacarbazine": {
-                    "dose": [150, 1200, "mg/m²"],
-                    "side_effects": ["Myelosuppression", "Severe nausea/vomiting", "Hepatotoxicity", "Photosensitivity", "Flu-like syndrome"],
-                    "compatible_fluids": ["D5W", "NS"],
-                    "incompatible_fluids": {
-                            "Heparin": "Forms precipitate",
-                            "Hydrocortisone": "Physical incompatibility",
-                            "Cefepime": "Y-site incompatibility"
-                    },
-                    "interactions": {
-                            "Phenytoin": "Reduces antiepileptic efficacy",
-                            "Live vaccines": "Avoid during treatment",
-                            "Allopurinol": "Increased myelosuppression risk"
-                    },
-                    "photosensitive": True,
-                    "notes": "Administer IV over 15-30 minutes. Requires light protection during infusion. High emetic risk - use 5-HT3 antagonists."
-            },
-            "Vinblastine": {
-                    "dose": [3.7, 11.1, "mg/m²"],
-                    "side_effects": ["Myelosuppression", "Neurotoxicity", "Constipation", "Jaw pain", "SIADH"],
-                    "compatible_fluids": ["NS", "D5W"],
-                    "incompatible_fluids": {
-                            "Furosemide": "Immediate precipitate",
-                            "Ceftriaxone": "Forms insoluble complex",
-                            "Bicarbonate solutions": "pH instability"
-                    },
-                    "interactions": {
-                            "CYP3A4 inhibitors": "Increased neurotoxicity risk",
-                            "Mitomycin": "Increased pulmonary reactions",
-                            "Phenytoin": "Reduced serum levels"
-                    },
-                    "photosensitive": False,
-                    "notes": "Vesicant. Dose reduce for hepatic dysfunction. Administer through central line over 1 min. Monitor neurologic status."
-            },
-            "Mesna": {
-                    "dose": [1080, 3000, "mg/m²" "  (60 - 100 %) of ifosfamide dose"],
-                    "side_effects": ["Nausea", "Headache", "Hypersensitivity", "Hematuria (if underdosed)"],
-                    "compatible_fluids": ["D5W", "NS"],
-                    "incompatible_fluids": {
-                            "Cisplatin": "Incompatible in same line",
-                            "Amphotericin B": "Forms precipitate"
-                    },
-                    "interactions": {
-                            "Ifosfamide/Cyclophosphamide": "Prevents hemorrhagic cystitis",
-                            "Cephalothin": "False positive ketonuria"
-                    },
-                    "photosensitive": False,
-                    "notes": "Administer before and 4/8hrs after ifosfamide. IV or oral. Monitor urine for blood. Not protective against other toxicities."
-            }
-        }
 
         # Initialize variables
         self.drug_var = tk.StringVar()
@@ -5404,6 +4621,14 @@ class OncologyApp:
         main_container.columnconfigure(0, weight=1)
         main_container.columnconfigure(1, weight=1)
         main_container.rowconfigure(0, weight=1)
+
+    def load_chemo_drugs():
+        try:
+            with open('chemo_drugs.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading chemo drugs: {e}")
+            return {}    
 
     def calculate_infusion_rate(self, *args):
         """Calculate infusion rate automatically when volume/duration change"""
@@ -6171,7 +5396,7 @@ class OncologyApp:
         
     def upload_patient_to_drive(self, patient_data):
         """Upload patient data and files to Google Drive"""
-        if not self.drive.initialized:
+        if not self.drive or not self.drive.initialized:
             return False
         
         try:
@@ -6204,7 +5429,7 @@ class OncologyApp:
         self.create_patient_folder(file_no)
         
         # Try to sync with Google Drive
-        if self.drive.initialized:
+        if self.drive and self.drive.initialized:
             self.executor.submit(self.drive.sync_patient_files, file_no)
         
         try:
@@ -6270,7 +5495,7 @@ class OncologyApp:
 
             if not create_only:
                 # Upload to Google Drive
-                if self.drive.initialized:
+                if self.drive and self.drive.initialized:
                     self.executor.submit(
                         self.drive.upload_file,
                         doc_path,
@@ -6503,9 +5728,8 @@ class OncologyApp:
             self.create_patient_folder(file_no)
         
         # Try to sync with Google Drive
-        if self.drive.initialized:
-            self.executor.submit(self.drive.sync_patient_files, file_no)
-        
+        if self.drive and self.drive.initialized:
+            self.executor.submit(self.drive.sync_patient_files, file_no)        
         try:
             os.startfile(folder_name)
         except:
@@ -6516,7 +5740,7 @@ class OncologyApp:
         doc_name = f"Patient_{file_no}_Report.docx"
         doc_path = os.path.join(f"Patient_{file_no}", doc_name)
         
-        if not os.path.exists(doc_path) and self.drive.initialized:
+        if not os.path.exists(doc_path) and self.drive and self.drive.initialized:
             self.drive.download_file(doc_name, None, doc_path)
         
         try:
@@ -6831,7 +6055,7 @@ class OncologyApp:
         self.save_patient_data()
         
         # Remove from Google Drive in background
-        if self.drive.initialized:
+        if self.drive and self.drive.initialized:
             self.executor.submit(self.delete_patient_from_drive, file_no)
         
         # Delete local folder
@@ -6847,7 +6071,7 @@ class OncologyApp:
     
     def delete_patient_from_drive(self, file_no):
         """Delete patient data and folder from Google Drive"""
-        if not self.drive.initialized:
+        if not self.drive or not self.drive.initialized:
             return False
         
         try:
@@ -6894,10 +6118,10 @@ class OncologyApp:
                 json.dump(self.patient_data, f, indent=4)
             
             # Upload backup to Google Drive
-            if self.drive.initialized:
+            if self.drive and self.drive.initialized:
                 backup_name = os.path.basename(backup_path)
                 self.drive.upload_file(backup_path, backup_name, self.drive.app_folder_id)
-            
+
             messagebox.showinfo("Success", f"Data backed up to {backup_path}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to back up data: {e}")
@@ -6925,7 +6149,7 @@ class OncologyApp:
             self.save_patient_data()
             
             # Upload restored data to Google Drive
-            if self.drive.initialized:
+            if self.drive and self.drive.initialized:
                 for patient in self.patient_data:
                     self.drive.upload_patient_data(patient)
             
@@ -6966,7 +6190,7 @@ class OncologyApp:
                 df.to_excel(writer, sheet_name="ALL PATIENTS", index=False)
             
             # Upload to Google Drive
-            if self.drive.initialized:
+            if self.drive and self.drive.initialized:
                 self.drive.upload_file(file_path, os.path.basename(file_path), self.drive.app_folder_id)
             
             messagebox.showinfo("Success", f"All patient data exported to {file_path}")
@@ -8301,45 +7525,46 @@ class OncologyApp:
         ttk.Button(btn_frame, text="Cancel", command=self.main_menu).pack(side=tk.LEFT, padx=10)
     
     def sync_data(self):
-        """Full data synchronization implementation with proper progress handling"""
+        """Full data synchronization with user prompt for patient file sync and Google Drive fix"""
         if not self.internet_connected:
             messagebox.showerror("Error", "No internet connection available.")
             return
-        
+
         if self.sync_in_progress:
             messagebox.showinfo("Info", "Sync already in progress.")
             return
-        
-        confirm = messagebox.askyesno("Confirm Sync", 
+
+        confirm = messagebox.askyesno(
+            "Confirm Sync",
             "This will synchronize all data with Firebase and Google Drive.\n"
             "This may take some time depending on your internet speed and amount of data.\n\n"
-            "Do you want to continue?")
+            "Do you want to continue?"
+        )
         if not confirm:
             return
-        
+
         self.sync_in_progress = True
         self.sync_status.config(text="Syncing... Please wait")
         self.sync_btn.config(state=tk.DISABLED)
-        
+
         try:
             # Create progress window
             self.sync_progress_window = tk.Toplevel(self.root)
             self.sync_progress_window.title("Synchronization Progress")
             self.sync_progress_window.geometry("500x250")
             self.sync_progress_window.grab_set()
-            
-            # Progress UI components
+
             progress_frame = ttk.Frame(self.sync_progress_window)
             progress_frame.pack(pady=20, padx=20, fill=tk.BOTH, expand=True)
-            
-            tk.Label(progress_frame, text="Synchronization Progress", 
-                    font=('Helvetica', 14, 'bold')).pack(pady=10)
-            
-            self.sync_status_label = tk.Label(progress_frame, 
-                                            text="Initializing synchronization...",
-                                            wraplength=450)
+
+            tk.Label(progress_frame, text="Synchronization Progress",
+                     font=('Helvetica', 14, 'bold')).pack(pady=10)
+
+            self.sync_status_label = tk.Label(progress_frame,
+                                              text="Initializing synchronization...",
+                                              wraplength=450)
             self.sync_status_label.pack(pady=5)
-            
+
             self.sync_progress_bar = ttk.Progressbar(
                 progress_frame,
                 orient='horizontal',
@@ -8347,66 +7572,55 @@ class OncologyApp:
                 mode='determinate'
             )
             self.sync_progress_bar.pack(pady=10)
-            
-            self.sync_details_label = tk.Label(progress_frame, 
-                                             text="",
-                                             fg='#666666')
+
+            self.sync_details_label = tk.Label(progress_frame,
+                                               text="",
+                                               fg='#666666')
             self.sync_details_label.pack(pady=5)
-            
-            close_btn = ttk.Button(progress_frame, 
-                                 text="Close", 
-                                 state=tk.DISABLED,
-                                 command=self.sync_progress_window.destroy)
+
+            close_btn = ttk.Button(progress_frame,
+                                   text="Close",
+                                   state=tk.DISABLED,
+                                   command=self.sync_progress_window.destroy)
             close_btn.pack(pady=10)
 
-            def update_progress(message, detail="", step=None, total_steps=4):
-                """Nested function to update progress safely"""
+            def update_progress(message, detail="", step=None, total_steps=5):
                 if step is not None:
-                    progress = (step/total_steps)*100
+                    progress = (step / total_steps) * 100
                     self.sync_progress_bar['value'] = progress
                 self.sync_status_label.config(text=message)
                 self.sync_details_label.config(text=detail)
                 self.sync_progress_window.update()
 
             def sync_task():
-                """Main synchronization task"""
                 try:
-                    # Sync patients with Firebase
+                    # Step 1: Sync patients with Firebase
                     update_progress("Syncing patient data...", step=1)
                     fb_success, fb_msg = self.firebase.sync_patients(self.patient_data)
-                    
                     if fb_success:
                         firebase_data = self.firebase.get_all_patients()
                         if firebase_data:
-                            self.patient_data = sorted(firebase_data, 
-                                                     key=lambda x: int(x.get("FILE NUMBER", 0)))
+                            self.patient_data = sorted(firebase_data,
+                                                      key=lambda x: int(x.get("FILE NUMBER", 0)))
                             self.save_patient_data()
-                    
-                    # Sync users
+
+                    # Step 2: Sync users
                     update_progress("Syncing user accounts...", step=2)
                     users_list = [{'username': k, **v} for k, v in self.users.items()]
                     fb_user_success, fb_user_msg = self.firebase.sync_users(users_list)
-                    
                     if fb_user_success:
                         firebase_users = self.firebase.get_all_users()
                         self.users = {u['username']: u for u in firebase_users}
                         self.save_users_to_file()
-                    
-                    # Sync dropdowns
+
+                    # Step 3: Sync dropdowns
                     update_progress("Syncing dropdown lists...", step=3)
                     try:
-                        if self.internet_connected:  # Ensure you have this flag available
-                            # Get fresh data from Firebase
+                        if self.internet_connected:
                             firebase_dropdowns = self.firebase.get_all_dropdowns()
-        
-                            # Create temporary file
                             temp_path = os.path.join(tempfile.gettempdir(), f"temp_dropdowns_{os.getpid()}.json")
-        
-                            # Write new data to temp file
                             with open(temp_path, 'w') as f:
                                 json.dump(firebase_dropdowns, f, indent=4)
-        
-                            # Atomic replacement
                             shutil.move(temp_path, DROPDOWN_FILE)
                             dd_success = True
                             dd_msg = "Dropdown lists updated from Firebase"
@@ -8416,60 +7630,65 @@ class OncologyApp:
                     except Exception as e:
                         dd_success = False
                         dd_msg = f"Dropdown sync failed: {str(e)}"
-                        # Clean up temp file if exists
                         if os.path.exists(temp_path):
                             os.remove(temp_path)
 
-                    # Google Drive Sync
-                    update_progress("Syncing with Google Drive...", 
-                                   "This may take several minutes", 
-                                   step=4)
-                    if self.drive.initialized:
+                    # Step 4: Ask user if they want to sync patient files
+                    sync_files = messagebox.askyesno(
+                        "Sync Patient Files",
+                        "Do you want to continue and synchronize patient files (upload/download files to Google Drive)?\n\n"
+                        "Choose 'No' to skip file upload/download and finish sync now."
+                    )
+
+                    # Step 5: Google Drive Sync (only if user agreed)
+                    update_progress("Syncing with Google Drive...",
+                                    "This may take several minutes",
+                                    step=4)
+                    if self.drive and self.drive.initialized and sync_files:
                         try:
                             for idx, patient in enumerate(self.patient_data):
                                 update_progress(
                                     "Uploading patient data to Google Drive...",
-                                    f"Patient {idx+1}/{len(self.patient_data)}",
+                                    f"Patient {idx + 1}/{len(self.patient_data)}",
                                     step=4
                                 )
                                 self.drive.upload_patient_data(patient)
-                            
+
                             total_patients = len(self.patient_data)
                             for idx, patient in enumerate(self.patient_data):
                                 file_no = patient["FILE NUMBER"]
                                 update_progress(
                                     "Syncing patient files...",
-                                    f"Patient {file_no} ({idx+1}/{total_patients})",
-                                    step=4
+                                    f"Patient {file_no} ({idx + 1}/{total_patients})",
+                                    step=5
                                 )
                                 local_folder = f"Patient_{file_no}"
                                 os.makedirs(local_folder, exist_ok=True)
                                 self.drive.sync_patient_files(file_no)
-                        
+
                         except Exception as drive_error:
                             print(f"Google Drive sync error: {drive_error}")
-                    
+
                     # Finalize
                     self.last_sync_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                    update_progress("Synchronization complete!", 
-                                  f"Last sync: {self.last_sync_time}", 
-                                  step=4)
+                    update_progress("Synchronization complete!",
+                                    f"Last sync: {self.last_sync_time}",
+                                    step=5)
                     close_btn.config(state=tk.NORMAL)
                     self.sync_in_progress = False
-                    
+
                 except Exception as e:
-                    update_progress("Synchronization failed!", 
-                                  f"Error: {str(e)}", 
-                                  step=4)
+                    update_progress("Synchronization failed!",
+                                    f"Error: {str(e)}",
+                                    step=5)
                     close_btn.config(state=tk.NORMAL)
                     self.sync_in_progress = False
                     raise
 
-            # Start sync thread with proper reference to update_progress
             import threading
             sync_thread = threading.Thread(target=sync_task, daemon=True)
             sync_thread.start()
-            
+
         except Exception as e:
             messagebox.showerror("Sync Error", f"Failed to start sync: {str(e)}")
             self.sync_in_progress = False
