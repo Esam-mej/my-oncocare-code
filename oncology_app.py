@@ -261,7 +261,7 @@ MALIGNANCY_FIELDS = {
 }
 
 COMMON_FIELDS = [
-    "FILE NUMBER", "NAME", "GENDER", "DATE OF BIRTH", "NATIONALITY",
+    "FILE NUMBER", "NATIONAL CANCER NUMBER", "NAME", "GENDER", "DATE OF BIRTH", "NATIONALITY",
     "NATIONAL NUMBER", "ADDRESS", "PHONE NUMBER", "FAMILY HISTORY OF MALIGNANCY",
     "ASSOCIATED DISEASE", "SYMPTOMS", "OTHER HISTORY NOTES", "EXAMINATION", "DIAGNOSIS",
     "AGE ON DIAGNOSIS", "INITIAL WBC"
@@ -1079,6 +1079,7 @@ class OncologyApp:
         self.root.state('zoomed')
         self.setup_keyboard_shortcuts()
         self.setup_login_screen()
+        self.guest_mode = False
 
         self.chemo_drugs = load_chemo_drugs()
         self.antibiotics_data = load_antibiotics_data()
@@ -1804,38 +1805,28 @@ class OncologyApp:
                 "password": bcrypt.hashpw("wjap19527".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
                 "role": "admin",
                 "LAST_MODIFIED": now
-            },
-            "doctor1": {
-                "password": bcrypt.hashpw("doc123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
-                "role": "editor",
-                "LAST_MODIFIED": now
-            },
-            "nurse1": {
-                "password": bcrypt.hashpw("nur123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
-                "role": "viewer",
-                "LAST_MODIFIED": now
-            },
-            "pharmacist1": {
-                "password": bcrypt.hashpw("pharm123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
-                "role": "pharmacist",
-                "LAST_MODIFIED": now
-            },
-            "seraj": {
-                "password": bcrypt.hashpw("steve8288".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
-                "role": "admin",
-                "LAST_MODIFIED": now
             }
         }
     
     def save_users_to_file(self):
-        """Save user data to file with timestamp updates"""
+        """Save user data to file with timestamp updates and sync to Firebase if available"""
         for username, data in self.users.items():
             if 'LAST_MODIFIED' not in data:
                 data['LAST_MODIFIED'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
+            else:
+                # Always update timestamp when saving (for password change, etc.)
+                data['LAST_MODIFIED'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with open("users_data.json", "w") as f:
             json.dump(self.users, f, indent=4)
-    
+        # Sync to Firebase if available
+        if hasattr(self, 'firebase') and self.firebase and self.firebase.initialized:
+            try:
+                # Convert self.users dict to list of user dicts with 'username' key
+                users_list = [{'username': k, **v} for k, v in self.users.items()]
+                self.firebase.sync_users(users_list)
+            except Exception as e:
+                print(f"User sync to Firebase failed: {e}")
+                    
     def on_close(self):
         """Handle window close event"""
         if messagebox.askyesno("Exit Confirmation", "Are you sure you want to exit?"):
@@ -1907,13 +1898,35 @@ class OncologyApp:
         # Exit button
         exit_btn = ttk.Button(form_container, text="Exit", command=self.root.quit)
         exit_btn.pack(fill=tk.X, ipady=10)
+
+        # Guest access buttons
+        guest_btn_frame = tk.Frame(form_container, bg='white')
+        guest_btn_frame.pack(fill=tk.X, pady=(20, 0))
+
+        ttk.Button(guest_btn_frame, text="🧮 Calculators (Guest Access)",
+                   command=lambda: self.guest_access("calculators"),
+                   style='Blue.TButton').pack(fill=tk.X, ipady=10, pady=(0, 10))
+
+        ttk.Button(guest_btn_frame, text="⚠️ Extravasation (Guest Access)",
+                   command=lambda: self.guest_access("extravasation"),
+                   style='Blue.TButton').pack(fill=tk.X, ipady=10)    
         
         # Focus on username field
         self.entry_username.focus()
         
         # Bind Enter key to login
         self.entry_password.bind('<Return>', lambda event: self.login())
-    
+
+    def guest_access(self, section):
+        """Allow guest access to calculators or extravasation management."""
+        self.current_user = "guest"
+        self.guest_mode = True
+        self.user_label.config(text="User: Guest (limited access)")
+        if section == "calculators":
+            self.show_calculators()
+        elif section == "extravasation":
+            self.show_extravasation_management()
+
     def login(self):
         """Handle user login and show sync button"""
         username = self.entry_username.get()
@@ -2845,9 +2858,15 @@ class OncologyApp:
         for idx, appt in enumerate(sorted(appointments, key=lambda x: x.get("TIME", ""))):
             row = ttk.Frame(self.opd_table_frame)
             row.pack(fill=tk.X, pady=1)
-            for col in columns:
-                ttk.Label(row, text=appt.get(col, ""), width=col_widths[col], anchor="w").pack(side=tk.LEFT, padx=2)
-            # Action buttons
+            for i, col in enumerate(columns):
+                value = appt.get(col, "")
+                if col == "FILE_NUMBER" and value:
+                    btn = ttk.Button(row, text=value, width=col_widths[col],
+                                     command=lambda v=value: self.open_patient_by_file_number(v))
+                    btn.pack(side=tk.LEFT, padx=2)
+                else:
+                    ttk.Label(row, text=value, width=col_widths[col], anchor="w").pack(side=tk.LEFT, padx=2)
+            # Action buttons (only once per row, after all columns)
             btn_frame = ttk.Frame(row)
             btn_frame.pack(side=tk.LEFT, padx=2)
             ttk.Button(btn_frame, text="Edit", width=6, command=lambda i=idx: self.edit_appointment_window(i)).pack(side=tk.LEFT, padx=1)
@@ -2931,6 +2950,14 @@ class OncologyApp:
         ttk.Button(frame, text="Save Changes", command=save_edit).pack(pady=10)
         ttk.Button(frame, text="Cancel", command=win.destroy).pack()
     
+    def open_patient_by_file_number(self, file_number):
+        """Open patient view by file number from OPD appointments."""
+        for patient in self.patient_data:
+            if patient.get("FILE NUMBER", "") == file_number:
+                self.view_patient(patient)
+                return
+        messagebox.showinfo("Not Found", f"No patient found with file number: {file_number}")
+
     def delete_appointment(self, appt_index):
         """Delete an appointment after confirmation."""
         date = self.opd_date_var.get()
@@ -3003,6 +3030,12 @@ class OncologyApp:
                 messagebox.showerror("Error", "All fields except requests are required.")
                 return
             appts = self.load_appointments()
+            # Prevent overwriting: only add if not exact duplicate (same date, time, file number, and name)
+            for a in appts:
+                if (a["DATE"] == date and a["TIME"] == time and
+                    a.get("FILE_NUMBER", "") == file_no and a.get("NAME", "") == name):
+                    messagebox.showerror("Error", "This appointment already exists.")
+                    return
             appts.append({
                 "FILE_NUMBER": file_no,
                 "NAME": name,
@@ -3728,6 +3761,10 @@ class OncologyApp:
             return date_str  # Return original if parsing fails
         return "??/??/??"
 
+    def back_to_login_from_guest(self):
+        self.guest_mode = False
+        self.setup_login_screen()
+
     def show_statistics(self):
         """Show statistics window"""
         self.open_statistics_window()
@@ -3789,9 +3826,12 @@ class OncologyApp:
                              style='Blue.TButton')
         print_btn.pack(side=tk.RIGHT, padx=10)
         
-        back_btn = ttk.Button(btn_frame, text="Back to Menu", 
-                            command=self.main_menu,
-                            style='Blue.TButton')
+        back_btn = ttk.Button(
+            btn_frame,
+            text="Back to Menu" if not self.guest_mode else "Back to Login",
+            command=(self.main_menu if not self.guest_mode else self.back_to_login_from_guest),
+            style='Blue.TButton'
+        )
         back_btn.pack(side=tk.LEFT, padx=10)
 
     def add_extravasation_content(self, parent):
@@ -4201,33 +4241,29 @@ class OncologyApp:
             self.root.after(5000, delete_temp_file)
 
     def show_calculators(self):
-        """Display all calculators in tabs"""
         self.clear_frame()
-        
         main_frame = ttk.Frame(self.root)
         main_frame.pack(expand=True, fill=tk.BOTH)
-        
         notebook = ttk.Notebook(main_frame)
         notebook.pack(fill=tk.BOTH, expand=True)
-        
-        # Add all calculator tabs
         calculators = [
             ("BSA Calculator", self.setup_bsa_calculator),
             ("IV Fluid Calculator", self.setup_iv_calculator),
             ("Chemo Dosage Calculator", self.setup_dosage_calculator),
             ("Antibiotics Calculator", self.setup_antibiotics_calculator)
         ]
-        
         for text, setup_func in calculators:
             frame = ttk.Frame(notebook)
             notebook.add(frame, text=text)
             setup_func(frame)
-        
-        # Back button
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X, pady=10)
-        ttk.Button(btn_frame, text="Back to Menu", command=self.main_menu).pack()
-        
+        ttk.Button(
+            btn_frame,
+            text="Back to Menu" if not self.guest_mode else "Back to Login",
+            command=(self.main_menu if not self.guest_mode else self.back_to_login_from_guest)
+        ).pack()
+
     def setup_antibiotics_calculator(self, parent):
         """Setup the antibiotics calculator interface for pediatric oncology patients with enhanced features"""
         # Create main container with scrollable canvas
@@ -7969,16 +8005,26 @@ class OncologyApp:
 
                     # Step 4: Ask user if they want to sync patient files
                     sync_files = messagebox.askyesno(
-                        "Sync Patient Files",
-                        "Do you want to continue and synchronize patient files (upload/download files to Google Drive)?\n\n"
-                        "Choose 'No' to skip file upload/download and finish sync now."
-                    )
+        "Sync Patient Files",
+        "Do you want to continue and synchronize patient files (upload/download files to Google Drive)?\n\n"
+        "Choose 'No' to skip file upload/download and finish sync now."
+    )
+
+                    if not sync_files:
+                        # User said no: finish sync immediately and do NOT run Google Drive sync
+                        self.last_sync_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                        update_progress("Synchronization complete!",
+                                        f"Last sync: {self.last_sync_time}",
+                                        step=5)
+                        close_btn.config(state=tk.NORMAL)
+                        self.sync_in_progress = False
+                        return  # <--- This ensures the thread exits here
 
                     # Step 5: Google Drive Sync (only if user agreed)
                     update_progress("Syncing with Google Drive...",
                                     "This may take several minutes",
                                     step=4)
-                    if self.drive and self.drive.initialized and sync_files:
+                    if self.drive and self.drive.initialized:
                         try:
                             for idx, patient in enumerate(self.patient_data):
                                 update_progress(
